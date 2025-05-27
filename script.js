@@ -1,4 +1,6 @@
+
 document.getElementById("checklistForm").addEventListener("submit", function (e) {
   e.preventDefault();
-  alert("Checklist enviado. Gracias.");
+  document.getElementById("mensaje").textContent = "Checklist enviado correctamente. ¡Gracias!";
+  this.reset();
 });
