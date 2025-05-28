@@ -1,0 +1,35 @@
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f4f4f4;
+  margin: 0;
+  padding: 20px;
+}
+.container {
+  max-width: 500px;
+  margin: auto;
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+h1 {
+  font-size: 22px;
+  text-align: center;
+}
+label {
+  display: block;
+  margin-top: 15px;
+}
+textarea {
+  width: 100%;
+  padding: 10px;
+}
+button {
+  margin-top: 20px;
+  padding: 10px 15px;
+}
+.mensaje {
+  margin-top: 15px;
+  font-weight: bold;
+}
