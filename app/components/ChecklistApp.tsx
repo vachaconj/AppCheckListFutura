@@ -9,6 +9,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { skuList } from '@/app/data/skuList';
 
+const diagnosticos = [
+  'No imprime negro / color faltante',
+  'Cabezal se choca con material o carro desalineado',
+  'Fugas de tinta en dampers / cabezal',
+  'Banding / líneas / imagen doble',
+  'Error de encoder o motor',
+  'Software no detecta cabezales',
+  'Error al cargar tinta / sensor de tinta',
+  'Ruido extraño en el cabezal',
+  'Tinta derramada en superficie de impresión'
+];
+
 export default function ChecklistApp() {
   const [form, setForm] = useState({
     cliente: '',
@@ -20,7 +32,20 @@ export default function ChecklistApp() {
     observaciones: '',
     clienteSatisfecho: false,
     entregoInstructivo: false,
+    diagnosticos: [] as string[],
   });
+
+  const toggleDiagnostico = (diagnostico: string) => {
+    setForm((prevForm) => {
+      const exists = prevForm.diagnosticos.includes(diagnostico);
+      return {
+        ...prevForm,
+        diagnosticos: exists
+          ? prevForm.diagnosticos.filter((d) => d !== diagnostico)
+          : [...prevForm.diagnosticos, diagnostico],
+      };
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +147,22 @@ export default function ChecklistApp() {
             }
           />
           <Label htmlFor="entregoInstructivo">Se entregó instructivo</Label>
+        </div>
+
+        <div>
+          <Label className="font-semibold">Diagnóstico:</Label>
+          <div className="space-y-2 mt-2">
+            {diagnosticos.map((item, idx) => (
+              <div key={idx} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`diag-${idx}`}
+                  checked={form.diagnosticos.includes(item)}
+                  onCheckedChange={() => toggleDiagnostico(item)}
+                />
+                <Label htmlFor={`diag-${idx}`}>{item}</Label>
+              </div>
+            ))}
+          </div>
         </div>
 
         <Button onClick={handleSubmit}>Enviar</Button>
