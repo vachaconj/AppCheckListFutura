@@ -7,137 +7,125 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { skuList } from '@/app/data/skuList';
 
 export default function ChecklistApp() {
-  const [form, setForm] = useState<{
-  cliente: string;
-  direccion: string;
-  ciudad: string;
-  tecnico: string;
-  fecha: string;
-  modelo: string;
-  tipo: string[];
-  diagnostico: string[];
-  acciones: string[];
-  observaciones: string;
-  firmaCliente: string;
-  firmaTecnico: string;
-}>({
-  cliente: '',
-  direccion: '',
-  ciudad: '',
-  tecnico: '',
-  fecha: '',
-  modelo: '',
-  tipo: [],
-  diagnostico: [],
-  acciones: [],
-  observaciones: '',
-  firmaCliente: '',
-  firmaTecnico: ''
-});
+  const [form, setForm] = useState({
+    cliente: '',
+    direccion: '',
+    ciudad: '',
+    tecnico: '',
+    fecha: '',
+    sku: '',
+    observaciones: '',
+    clienteSatisfecho: false,
+    entregoInstructivo: false,
+  });
 
-  const opcionesTipo = ['DTF', 'UV', 'ECO', 'SUBLIMACIÓN', 'HÍBRIDA', 'CAMA PLANA'];
-  const diagnosticos = [
-    'No imprime negro / color faltante',
-    'Cabezal se choca con material o carro desalineado',
-    'Fugas de tinta en dampers / cabezal',
-    'Banding / líneas / imagen doble',
-    'Perfil ICC no cargado o incorrecto',
-    'Error de temperatura o sensores en horno (DTF)',
-    'Calibración mal ejecutada / sin resultado',
-    'Error de software (Hoson / Maintop / Flexi)',
-    'Placa reseteada / sin parámetros / ID perdido',
-    'Problemas con RIP o comunicación PC → impresora'
-  ];
-  const acciones = [
-    'Purga manual / desde software / con jeringa',
-    'Limpieza profunda de cabezal (flush, solución)',
-    'Reemplazo de damper / manguera / filtro',
-    'Reconfiguración de software RIP',
-    'Calibración de bi-direccional, alimentación, separación cabezal',
-    'Carga o verificación de ICC',
-    'Reseteo / configuración de parámetros de placa (BetterPrinter)',
-    'Asistencia remota (AnyDesk / TeamViewer)',
-    'Asistencia presencial complementaria'
-  ];
-
-  const toggleItem = (field: 'tipo' | 'diagnostico' | 'acciones', value: string) => {
-  setForm(prev => ({
-    ...prev,
-    [field]: prev[field].includes(value)
-      ? prev[field].filter(v => v !== value)
-      : [...prev[field], value]
-  }));
-};
-
-  const handleChange = (field: string, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleSubmit = async () => {
-    alert('Formulario enviado con éxito');
-    // Aquí puedes integrar con Google Sheets vía webhook en el futuro
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log(form);
+    alert('Formulario enviado (solo en consola por ahora)');
   };
 
   return (
-    <div className="p-4 grid gap-4">
-      <Card>
-        <CardContent className="grid gap-4">
+    <Card className="max-w-md mx-auto mt-10">
+      <CardContent className="p-6 space-y-4">
+        <h1 className="text-lg font-bold text-center">Checklist de Visita Técnica</h1>
+
+        <div>
           <Label>Cliente</Label>
-          <Input value={form.cliente} onChange={e => handleChange('cliente', e.target.value)} />
+          <Input
+            type="text"
+            value={form.cliente}
+            onChange={(e) => setForm({ ...form, cliente: e.target.value })}
+          />
+        </div>
+
+        <div>
           <Label>Dirección</Label>
-          <Input value={form.direccion} onChange={e => handleChange('direccion', e.target.value)} />
+          <Input
+            type="text"
+            value={form.direccion}
+            onChange={(e) => setForm({ ...form, direccion: e.target.value })}
+          />
+        </div>
+
+        <div>
           <Label>Ciudad</Label>
-          <Input value={form.ciudad} onChange={e => handleChange('ciudad', e.target.value)} />
+          <Input
+            type="text"
+            value={form.ciudad}
+            onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+          />
+        </div>
+
+        <div>
           <Label>Técnico</Label>
-          <Input value={form.tecnico} onChange={e => handleChange('tecnico', e.target.value)} />
+          <Input
+            type="text"
+            value={form.tecnico}
+            onChange={(e) => setForm({ ...form, tecnico: e.target.value })}
+          />
+        </div>
+
+        <div>
           <Label>Fecha</Label>
-          <Input type="date" value={form.fecha} onChange={e => handleChange('fecha', e.target.value)} />
-          <Label>Modelo</Label>
-          <Input value={form.modelo} onChange={e => handleChange('modelo', e.target.value)} />
+          <Input
+            type="date"
+            value={form.fecha}
+            onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+          />
+        </div>
 
-          <Label>Tipo de máquina</Label>
-          <div className="grid grid-cols-3 gap-2">
-            {opcionesTipo.map(tipo => (
-              <div key={tipo}>
-                <Checkbox checked={form.tipo.includes(tipo)} onCheckedChange={() => toggleItem('tipo', tipo)} />
-                <span className="ml-2">{tipo}</span>
-              </div>
+        <div>
+          <Label>SKU</Label>
+          <Input
+            type="text"
+            value={form.sku}
+            onChange={(e) => setForm({ ...form, sku: e.target.value })}
+            list="sku-options"
+            placeholder="Buscar SKU..."
+          />
+          <datalist id="sku-options">
+            {skuList.map((sku, index) => (
+              <option key={index} value={sku} />
             ))}
-          </div>
+          </datalist>
+        </div>
 
-          <Label>Diagnóstico</Label>
-          <div className="grid gap-1">
-            {diagnosticos.map(d => (
-              <div key={d}>
-                <Checkbox checked={form.diagnostico.includes(d)} onCheckedChange={() => toggleItem('diagnostico', d)} />
-                <span className="ml-2">{d}</span>
-              </div>
-            ))}
-          </div>
+        <div>
+          <Label>Observaciones:</Label>
+          <Textarea
+            value={form.observaciones}
+            onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
+          />
+        </div>
 
-          <Label>Acciones realizadas</Label>
-          <div className="grid gap-1">
-            {acciones.map(a => (
-              <div key={a}>
-                <Checkbox checked={form.acciones.includes(a)} onCheckedChange={() => toggleItem('acciones', a)} />
-                <span className="ml-2">{a}</span>
-              </div>
-            ))}
-          </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="clienteSatisfecho"
+            checked={form.clienteSatisfecho}
+            onCheckedChange={(value) =>
+              setForm({ ...form, clienteSatisfecho: value === true })
+            }
+          />
+          <Label htmlFor="clienteSatisfecho">Cliente satisfecho</Label>
+        </div>
 
-          <Label>Observaciones</Label>
-          <Textarea value={form.observaciones} onChange={e => handleChange('observaciones', e.target.value)} />
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="entregoInstructivo"
+            checked={form.entregoInstructivo}
+            onCheckedChange={(value) =>
+              setForm({ ...form, entregoInstructivo: value === true })
+            }
+          />
+          <Label htmlFor="entregoInstructivo">Se entregó instructivo</Label>
+        </div>
 
-          <Label>Firma del cliente</Label>
-          <Input value={form.firmaCliente} onChange={e => handleChange('firmaCliente', e.target.value)} />
-          <Label>Firma del técnico</Label>
-          <Input value={form.firmaTecnico} onChange={e => handleChange('firmaTecnico', e.target.value)} />
-
-          <Button onClick={handleSubmit}>Enviar checklist</Button>
-        </CardContent>
-      </Card>
-    </div>
+        <Button onClick={handleSubmit}>Enviar</Button>
+      </CardContent>
+    </Card>
   );
 }
