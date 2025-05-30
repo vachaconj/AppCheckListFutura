@@ -7,23 +7,37 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { skuList } from '@/app/data/skuList';
 import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
 } from '@/components/ui/accordion';
-
-const AccordionSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <AccordionItem value={title.toLowerCase().replace(/\s/g, '-')}> 
-    <AccordionTrigger>{title}</AccordionTrigger>
-    <AccordionContent>{children}</AccordionContent>
-  </AccordionItem>
-);
+import { skuList } from '@/app/data/skuList';
 
 export default function ChecklistApp() {
-  const [form, setForm] = useState({
+  type FormularioChecklist = {
+    cliente: string;
+    direccion: string;
+    ciudad: string;
+    tecnico: string;
+    fecha: string;
+    sku: string;
+    observaciones: string;
+    clienteSatisfecho: boolean;
+    entregoInstructivo: boolean;
+    diagnostico: string[];
+    solucion: string[];
+    pruebas: string[];
+    comentariosDiagnostico: string;
+    comentariosSolucion: string;
+    comentariosPruebas: string;
+    archivoDiagnostico: FileList | null;
+    archivoSolucion: FileList | null;
+    archivoPruebas: FileList | null;
+  };
+
+  const [form, setForm] = useState<FormularioChecklist>({
     cliente: '',
     direccion: '',
     ciudad: '',
@@ -33,13 +47,25 @@ export default function ChecklistApp() {
     observaciones: '',
     clienteSatisfecho: false,
     entregoInstructivo: false,
-    diagnostico: [] as string[],
-    solucion: [] as string[],
-    pruebas: [] as string[],
+    diagnostico: [],
+    solucion: [],
+    pruebas: [],
     comentariosDiagnostico: '',
     comentariosSolucion: '',
     comentariosPruebas: '',
+    archivoDiagnostico: null,
+    archivoSolucion: null,
+    archivoPruebas: null,
   });
+
+  const handleCheckboxChange = (field: keyof FormularioChecklist, value: string) => {
+    const currentValues = form[field] as string[];
+    if (currentValues.includes(value)) {
+      setForm({ ...form, [field]: currentValues.filter((v) => v !== value) });
+    } else {
+      setForm({ ...form, [field]: [...currentValues, value] });
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +76,7 @@ export default function ChecklistApp() {
   return (
     <Card className="max-w-3xl mx-auto mt-10">
       <CardContent className="p-6 space-y-4">
-        <h1 className="text-xl font-bold text-center">Checklist de Visita Técnica</h1>
+        <h1 className="text-lg font-bold text-center">Checklist de Visita Técnica</h1>
 
         <Input placeholder="Cliente" value={form.cliente} onChange={(e) => setForm({ ...form, cliente: e.target.value })} />
         <Input placeholder="Dirección" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
@@ -58,18 +84,21 @@ export default function ChecklistApp() {
         <Input placeholder="Técnico" value={form.tecnico} onChange={(e) => setForm({ ...form, tecnico: e.target.value })} />
         <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
 
-        <Input
-          type="text"
-          placeholder="Buscar SKU..."
-          value={form.sku}
-          onChange={(e) => setForm({ ...form, sku: e.target.value })}
-          list="sku-options"
-        />
-        <datalist id="sku-options">
-          {skuList.map((sku, index) => (
-            <option key={index} value={sku} />
-          ))}
-        </datalist>
+        <div>
+          <Label>Código SKU</Label>
+          <Input
+            type="text"
+            value={form.sku}
+            onChange={(e) => setForm({ ...form, sku: e.target.value })}
+            list="sku-options"
+            placeholder="Buscar SKU..."
+          />
+          <datalist id="sku-options">
+            {skuList.map((sku, index) => (
+              <option key={index} value={sku} />
+            ))}
+          </datalist>
+        </div>
 
         <Textarea placeholder="Observaciones generales" value={form.observaciones} onChange={(e) => setForm({ ...form, observaciones: e.target.value })} />
 
@@ -84,86 +113,50 @@ export default function ChecklistApp() {
         </div>
 
         <Accordion type="multiple" className="w-full">
-          <AccordionSection title="Diagnóstico">
-            {[
-              'No imprime negro / color faltante',
-              'Cabezal se choca con material o carro desalineado',
-              'Fugas de tinta en amortiguadores / cabezales',
-              'Banding / líneas / imagen doble',
-              'Error de comunicación del cabezal',
-              'Tinta derramada en capping o estación',
-              'Pérdida de presión en sistema de tinta',
-              'Desalineación de eje Y o X',
-              'Desbordamiento de tinta en impresión',
-              'Golpe de cabezal en el sustrato',
-            ].map((item) => (
-              <div key={item} className="flex items-center space-x-2">
-                <Checkbox checked={form.diagnostico.includes(item)} onCheckedChange={(value) => {
-                  const newDiag = value
-                    ? [...form.diagnostico, item]
-                    : form.diagnostico.filter((i) => i !== item);
-                  setForm({ ...form, diagnostico: newDiag });
-                }} />
-                <Label>{item}</Label>
-              </div>
-            ))}
-            <Textarea placeholder="Comentarios sobre Diagnóstico" value={form.comentariosDiagnostico} onChange={(e) => setForm({ ...form, comentariosDiagnostico: e.target.value })} />
-          </AccordionSection>
+          <AccordionItem value="diagnostico">
+            <AccordionTrigger>Diagnóstico</AccordionTrigger>
+            <AccordionContent>
+              {['No imprime', 'Cabezal tapado', 'Error de comunicación', 'Baja presión', 'Banding visible', 'Impresión corrida', 'Tinta espesa', 'Burbujas en damper', 'Error encoder', 'Obstrucción en carro'].map((item) => (
+                <div key={item} className="flex items-center space-x-2">
+                  <Checkbox id={item} checked={form.diagnostico.includes(item)} onCheckedChange={() => handleCheckboxChange('diagnostico', item)} />
+                  <Label htmlFor={item}>{item}</Label>
+                </div>
+              ))}
+              <Textarea placeholder="Comentarios sobre Diagnóstico" value={form.comentariosDiagnostico} onChange={(e) => setForm({ ...form, comentariosDiagnostico: e.target.value })} />
+              <Input type="file" multiple onChange={(e) => setForm({ ...form, archivoDiagnostico: e.target.files ? e.target.files : null })} />
+            </AccordionContent>
+          </AccordionItem>
 
-          <AccordionSection title="Solución aplicada">
-            {[
-              'Purgas generales',
-              'Carga con jeringa',
-              'Cambio de amortiguador',
-              'Cambio de cabezal',
-              'Cambio de tarjetas / sensor',
-              'Calibración de altura y alineación',
-              'Limpieza profunda de estación y capping',
-              'Reseteo de firmware',
-              'Ajuste de parámetros de impresión',
-              'Ajuste de presión y flujo de tinta',
-            ].map((item) => (
-              <div key={item} className="flex items-center space-x-2">
-                <Checkbox checked={form.solucion.includes(item)} onCheckedChange={(value) => {
-                  const newVal = value
-                    ? [...form.solucion, item]
-                    : form.solucion.filter((i) => i !== item);
-                  setForm({ ...form, solucion: newVal });
-                }} />
-                <Label>{item}</Label>
-              </div>
-            ))}
-            <Textarea placeholder="Comentarios sobre Solución" value={form.comentariosSolucion} onChange={(e) => setForm({ ...form, comentariosSolucion: e.target.value })} />
-          </AccordionSection>
+          <AccordionItem value="solucion">
+            <AccordionTrigger>Solución</AccordionTrigger>
+            <AccordionContent>
+              {['Purga profunda', 'Cambio de cabezal', 'Limpieza damper', 'Cambio de tubos', 'Ajuste de presión', 'Cambio sensor encoder', 'Reinicializar software', 'Cambio tarjeta madre', 'Soldadura cableado', 'Calibración óptica'].map((item) => (
+                <div key={item} className="flex items-center space-x-2">
+                  <Checkbox id={item} checked={form.solucion.includes(item)} onCheckedChange={() => handleCheckboxChange('solucion', item)} />
+                  <Label htmlFor={item}>{item}</Label>
+                </div>
+              ))}
+              <Textarea placeholder="Comentarios sobre Solución" value={form.comentariosSolucion} onChange={(e) => setForm({ ...form, comentariosSolucion: e.target.value })} />
+              <Input type="file" multiple onChange={(e) => setForm({ ...form, archivoSolucion: e.target.files ? e.target.files : null })} />
+            </AccordionContent>
+          </AccordionItem>
 
-          <AccordionSection title="Pruebas y Verificación">
-            {[
-              'Prueba de nozzle / test de inyectores',
-              'Prueba de impresión A3',
-              'Verificación de colores / densidad',
-              'Prueba de alineación',
-              'Revisión de calidad final',
-              'Prueba en diferentes materiales',
-              'Revisión con cliente',
-              'Reporte de funcionamiento estable',
-              'Validación con archivo original',
-              'Verificación de conexión USB / red',
-            ].map((item) => (
-              <div key={item} className="flex items-center space-x-2">
-                <Checkbox checked={form.pruebas.includes(item)} onCheckedChange={(value) => {
-                  const newVal = value
-                    ? [...form.pruebas, item]
-                    : form.pruebas.filter((i) => i !== item);
-                  setForm({ ...form, pruebas: newVal });
-                }} />
-                <Label>{item}</Label>
-              </div>
-            ))}
-            <Textarea placeholder="Comentarios sobre Pruebas" value={form.comentariosPruebas} onChange={(e) => setForm({ ...form, comentariosPruebas: e.target.value })} />
-          </AccordionSection>
+          <AccordionItem value="pruebas">
+            <AccordionTrigger>Pruebas</AccordionTrigger>
+            <AccordionContent>
+              {['Test nozzle', 'Test print', 'Prueba real', 'Control de calidad', 'Prueba en software', 'Verificación de colores', 'Reimpresión', 'Control de temperatura', 'Control de humedad', 'Prueba post-servicio'].map((item) => (
+                <div key={item} className="flex items-center space-x-2">
+                  <Checkbox id={item} checked={form.pruebas.includes(item)} onCheckedChange={() => handleCheckboxChange('pruebas', item)} />
+                  <Label htmlFor={item}>{item}</Label>
+                </div>
+              ))}
+              <Textarea placeholder="Comentarios sobre Pruebas" value={form.comentariosPruebas} onChange={(e) => setForm({ ...form, comentariosPruebas: e.target.value })} />
+              <Input type="file" multiple onChange={(e) => setForm({ ...form, archivoPruebas: e.target.files ? e.target.files : null })} />
+            </AccordionContent>
+          </AccordionItem>
         </Accordion>
 
-        <Button onClick={handleSubmit}>Enviar</Button>
+        <Button className="w-full" onClick={handleSubmit}>Enviar</Button>
       </CardContent>
     </Card>
   );
