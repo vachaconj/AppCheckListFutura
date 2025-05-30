@@ -8,6 +8,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { skuList } from '@/app/data/skuList';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 
 export default function ChecklistApp() {
   const [form, setForm] = useState({
@@ -18,132 +24,142 @@ export default function ChecklistApp() {
     fecha: '',
     sku: '',
     observaciones: '',
-    actividades: [] as string[],
     diagnostico: [] as string[],
-    validacion: [] as string[],
-    clienteSatisfecho: false,
-    entregoInstructivo: false,
+    acciones: [] as string[],
+    validaciones: [] as string[],
   });
 
-  const handleCheckboxChange = (field: 'actividades' | 'diagnostico' | 'validacion', value: string) => {
-    setForm((prev) => {
-      const list = prev[field];
-      const newList = list.includes(value)
-        ? list.filter((item) => item !== value)
-        : [...list, value];
-      return { ...prev, [field]: newList };
-    });
+  const handleCheckboxChange = (section: 'diagnostico' | 'acciones' | 'validaciones', value: string) => {
+    const list = form[section];
+    if (list.includes(value)) {
+      setForm({ ...form, [section]: list.filter((item) => item !== value) });
+    } else {
+      setForm({ ...form, [section]: [...list, value] });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     console.log(form);
-    alert('Formulario enviado (solo en consola por ahora)');
+    alert('Formulario enviado (solo consola por ahora)');
   };
 
   return (
-    <Card className="max-w-md mx-auto mt-10">
+    <Card className="max-w-2xl mx-auto mt-10">
       <CardContent className="p-6 space-y-4">
         <h1 className="text-lg font-bold text-center">Checklist de Visita Técnica</h1>
 
-        <div>
-          <Label>Cliente</Label>
-          <Input value={form.cliente} onChange={(e) => setForm({ ...form, cliente: e.target.value })} />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>Cliente</Label>
+            <Input type="text" value={form.cliente} onChange={(e) => setForm({ ...form, cliente: e.target.value })} />
+          </div>
+          <div>
+            <Label>Dirección</Label>
+            <Input type="text" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
+          </div>
+          <div>
+            <Label>Ciudad</Label>
+            <Input type="text" value={form.ciudad} onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
+          </div>
+          <div>
+            <Label>Técnico</Label>
+            <Input type="text" value={form.tecnico} onChange={(e) => setForm({ ...form, tecnico: e.target.value })} />
+          </div>
+          <div>
+            <Label>Fecha</Label>
+            <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+          </div>
+          <div>
+            <Label>Código SKU</Label>
+            <Input
+              type="text"
+              value={form.sku}
+              onChange={(e) => setForm({ ...form, sku: e.target.value })}
+              list="sku-options"
+              placeholder="Buscar SKU..."
+            />
+            <datalist id="sku-options">
+              {skuList.map((sku, index) => (
+                <option key={index} value={sku} />
+              ))}
+            </datalist>
+          </div>
         </div>
 
-        <div>
-          <Label>Dirección</Label>
-          <Input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
-        </div>
+        <Accordion type="multiple" className="w-full">
+          <AccordionItem value="diagnostico">
+            <AccordionTrigger>Diagnóstico Inicial</AccordionTrigger>
+            <AccordionContent>
+              {[
+                'No imprime negro / color faltante',
+                'Cabezal se choca con material o carro desalineado',
+                'Fugas de tinta en amortiguadores / cabezales',
+                'Banding / líneas / imagen doble',
+              ].map((item, i) => (
+                <div key={i} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`diagnostico-${i}`}
+                    checked={form.diagnostico.includes(item)}
+                    onCheckedChange={() => handleCheckboxChange('diagnostico', item)}
+                  />
+                  <Label htmlFor={`diagnostico-${i}`}>{item}</Label>
+                </div>
+              ))}
+            </AccordionContent>
+          </AccordionItem>
 
-        <div>
-          <Label>Ciudad</Label>
-          <Input value={form.ciudad} onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
-        </div>
+          <AccordionItem value="acciones">
+            <AccordionTrigger>Acciones Realizadas</AccordionTrigger>
+            <AccordionContent>
+              {[
+                'Purgas generales',
+                'Carga con jeringa',
+                'Cambio de amortiguador',
+                'Cambio de cabezal',
+                'Cambio de tarjetas / sensor',
+                'Calibración de altura / avance',
+              ].map((item, i) => (
+                <div key={i} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`acciones-${i}`}
+                    checked={form.acciones.includes(item)}
+                    onCheckedChange={() => handleCheckboxChange('acciones', item)}
+                  />
+                  <Label htmlFor={`acciones-${i}`}>{item}</Label>
+                </div>
+              ))}
+            </AccordionContent>
+          </AccordionItem>
 
-        <div>
-          <Label>Técnico</Label>
-          <Input value={form.tecnico} onChange={(e) => setForm({ ...form, tecnico: e.target.value })} />
-        </div>
-
-        <div>
-          <Label>Fecha</Label>
-          <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
-        </div>
-
-        <div>
-          <Label>SKU</Label>
-          <Input
-            value={form.sku}
-            onChange={(e) => setForm({ ...form, sku: e.target.value })}
-            list="sku-options"
-            placeholder="Buscar SKU..."
-          />
-          <datalist id="sku-options">
-            {skuList.map((sku, i) => (
-              <option key={i} value={sku} />
-            ))}
-          </datalist>
-        </div>
-
-        <div>
-          <Label>Diagnóstico</Label>
-          {['No imprime negro / color faltante', 'Cabezal se choca con material o carro desalineado', 'Fugas de tinta en dampers / cabezal', 'Banding / líneas / imagen doble'].map((item, i) => (
-            <div key={i} className="flex items-center space-x-2">
-              <Checkbox
-                checked={form.diagnostico.includes(item)}
-                onCheckedChange={() => handleCheckboxChange('diagnostico', item)}
-              />
-              <Label>{item}</Label>
-            </div>
-          ))}
-        </div>
-
-        <div>
-          <Label>Acciones realizadas</Label>
-          {['Purgas generales', 'Carga con jeringa', 'Cambio de damper', 'Cambio de cabezal', 'Cambio de tarjetas / sensor', 'Calibración de altura', 'Ajuste de presión', 'Nivelado de cama'].map((item, i) => (
-            <div key={i} className="flex items-center space-x-2">
-              <Checkbox
-                checked={form.actividades.includes(item)}
-                onCheckedChange={() => handleCheckboxChange('actividades', item)}
-              />
-              <Label>{item}</Label>
-            </div>
-          ))}
-        </div>
-
-        <div>
-          <Label>Validación</Label>
-          {['Cliente valida impresión en su material', 'Cliente valida impresión archivo sugerido'].map((item, i) => (
-            <div key={i} className="flex items-center space-x-2">
-              <Checkbox
-                checked={form.validacion.includes(item)}
-                onCheckedChange={() => handleCheckboxChange('validacion', item)}
-              />
-              <Label>{item}</Label>
-            </div>
-          ))}
-        </div>
+          <AccordionItem value="validacion">
+            <AccordionTrigger>Validación Final</AccordionTrigger>
+            <AccordionContent>
+              {[
+                'Cliente satisfecho',
+                'Se entregó instructivo',
+                'Test de inyectores',
+                'Impresión real final',
+              ].map((item, i) => (
+                <div key={i} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`validacion-${i}`}
+                    checked={form.validaciones.includes(item)}
+                    onCheckedChange={() => handleCheckboxChange('validaciones', item)}
+                  />
+                  <Label htmlFor={`validacion-${i}`}>{item}</Label>
+                </div>
+              ))}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
         <div>
           <Label>Observaciones</Label>
-          <Textarea value={form.observaciones} onChange={(e) => setForm({ ...form, observaciones: e.target.value })} />
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            checked={form.clienteSatisfecho}
-            onCheckedChange={(v) => setForm({ ...form, clienteSatisfecho: v === true })}
+          <Textarea
+            value={form.observaciones}
+            onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
           />
-          <Label>Cliente satisfecho</Label>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            checked={form.entregoInstructivo}
-            onCheckedChange={(v) => setForm({ ...form, entregoInstructivo: v === true })}
-          />
-          <Label>Se entregó instructivo</Label>
         </div>
 
         <Button onClick={handleSubmit}>Enviar</Button>
