@@ -1,22 +1,34 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Card, CardContent } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { skuList } from '@/app/data/skuList'
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from '@/components/ui/accordion'
+import { useState } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { skuList } from '@/app/data/skuList';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 export default function ChecklistApp() {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    [key: string]: string | boolean | FileList | null;
+    cliente: string;
+    direccion: string;
+    ciudad: string;
+    tecnico: string;
+    fecha: string;
+    sku: string;
+    observaciones: string;
+    clienteSatisfecho: boolean;
+    entregoInstructivo: boolean;
+    comentariosDiagnostico: string;
+    comentariosSolucion: string;
+    comentariosPruebas: string;
+    archivosDiagnostico: FileList | null;
+    archivosSolucion: FileList | null;
+    archivosPruebas: FileList | null;
+  }>({
     cliente: '',
     direccion: '',
     ciudad: '',
@@ -29,100 +41,115 @@ export default function ChecklistApp() {
     comentariosDiagnostico: '',
     comentariosSolucion: '',
     comentariosPruebas: '',
-    archivosDiagnostico: null as FileList | null,
-    archivosSolucion: null as FileList | null,
-    archivosPruebas: null as FileList | null,
-  })
+    archivosDiagnostico: null,
+    archivosSolucion: null,
+    archivosPruebas: null,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    console.log(form)
-    alert('Formulario enviado (solo consola por ahora)')
-  }
+    e.preventDefault();
+    console.log(form);
+    alert('Formulario enviado (solo en consola por ahora)');
+  };
 
   return (
     <Card className="max-w-2xl mx-auto mt-10">
       <CardContent className="p-6 space-y-4">
-        <h1 className="text-lg font-bold text-center">Checklist de Visita Técnica</h1>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label>Cliente</Label>
-            <Input value={form.cliente} onChange={e => setForm({ ...form, cliente: e.target.value })} />
-          </div>
-          <div>
-            <Label>Dirección</Label>
-            <Input value={form.direccion} onChange={e => setForm({ ...form, direccion: e.target.value })} />
-          </div>
-          <div>
-            <Label>Ciudad</Label>
-            <Input value={form.ciudad} onChange={e => setForm({ ...form, ciudad: e.target.value })} />
-          </div>
-          <div>
-            <Label>Técnico</Label>
-            <Input value={form.tecnico} onChange={e => setForm({ ...form, tecnico: e.target.value })} />
-          </div>
-          <div>
-            <Label>Fecha</Label>
-            <Input type="date" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} />
-          </div>
-          <div>
-            <Label>Código SKU</Label>
+        <h1 className="text-xl font-bold text-center">Checklist de Visita Técnica</h1>
+
+        {['cliente', 'direccion', 'ciudad', 'tecnico', 'fecha', 'sku'].map((field) => (
+          <div key={field}>
+            <Label>{field.charAt(0).toUpperCase() + field.slice(1)}</Label>
             <Input
-              list="sku-options"
-              value={form.sku}
-              onChange={e => setForm({ ...form, sku: e.target.value })}
-              placeholder="Buscar SKU..."
+              type={field === 'fecha' ? 'date' : 'text'}
+              value={form[field] as string}
+              onChange={(e) => setForm({ ...form, [field]: e.target.value })}
+              list={field === 'sku' ? 'sku-options' : undefined}
+              placeholder={field === 'sku' ? 'Buscar SKU...' : ''}
             />
-            <datalist id="sku-options">
-              {skuList.map((sku, idx) => (
-                <option key={idx} value={sku} />
-              ))}
-            </datalist>
           </div>
-          <div>
-            <Label>Observaciones generales</Label>
-            <Textarea value={form.observaciones} onChange={e => setForm({ ...form, observaciones: e.target.value })} />
-          </div>
+        ))}
 
-          <div className="flex items-center space-x-2">
-            <Checkbox checked={form.clienteSatisfecho} onCheckedChange={v => setForm({ ...form, clienteSatisfecho: v === true })} />
-            <Label>Cliente satisfecho</Label>
-          </div>
+        <datalist id="sku-options">
+          {skuList.map((sku, index) => (
+            <option key={index} value={sku} />
+          ))}
+        </datalist>
 
-          <div className="flex items-center space-x-2">
-            <Checkbox checked={form.entregoInstructivo} onCheckedChange={v => setForm({ ...form, entregoInstructivo: v === true })} />
-            <Label>Se entregó instructivo</Label>
-          </div>
+        <div>
+          <Label>Observaciones generales</Label>
+          <Textarea
+            value={form.observaciones as string}
+            onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
+          />
+        </div>
 
-          <Accordion type="multiple" className="w-full">
-            <AccordionItem value="diagnostico">
-              <AccordionTrigger>Diagnóstico</AccordionTrigger>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="clienteSatisfecho"
+            checked={form.clienteSatisfecho as boolean}
+            onCheckedChange={(value) => setForm({ ...form, clienteSatisfecho: value === true })}
+          />
+          <Label htmlFor="clienteSatisfecho">Cliente satisfecho</Label>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="entregoInstructivo"
+            checked={form.entregoInstructivo as boolean}
+            onCheckedChange={(value) => setForm({ ...form, entregoInstructivo: value === true })}
+          />
+          <Label htmlFor="entregoInstructivo">Se entregó instructivo</Label>
+        </div>
+
+        <Accordion type="multiple" className="w-full">
+          {['Diagnostico', 'Solucion', 'Pruebas'].map((seccion) => (
+            <AccordionItem key={seccion} value={seccion}>
+              <AccordionTrigger>{seccion}</AccordionTrigger>
               <AccordionContent>
-                <Textarea placeholder="Comentarios sobre Diagnóstico" value={form.comentariosDiagnostico} onChange={e => setForm({ ...form, comentariosDiagnostico: e.target.value })} />
-                <Input type="file" multiple onChange={e => setForm({ ...form, archivosDiagnostico: e.target.files })} />
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={`${seccion}-${i}`} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`${seccion}-${i}`}
+                      checked={form[`${seccion}-${i}`] as boolean}
+                      onCheckedChange={(value) =>
+                        setForm({ ...form, [`${seccion}-${i}`]: value === true })
+                      }
+                    />
+                    <Label htmlFor={`${seccion}-${i}`}>{`Actividad ${i + 1}`}</Label>
+                  </div>
+                ))}
+
+                <div className="mt-2">
+                  <Label>Comentarios sobre {seccion}</Label>
+                  <Textarea
+                    value={form[`comentarios${seccion}`] as string}
+                    onChange={(e) =>
+                      setForm({ ...form, [`comentarios${seccion}`]: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="mt-2">
+                  <Label>Fotos y videos de {seccion}</Label>
+                  <Input
+                    type="file"
+                    multiple
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        [`archivos${seccion}`]: e.target.files ?? null,
+                      })
+                    }
+                  />
+                </div>
               </AccordionContent>
             </AccordionItem>
+          ))}
+        </Accordion>
 
-            <AccordionItem value="solucion">
-              <AccordionTrigger>Solución</AccordionTrigger>
-              <AccordionContent>
-                <Textarea placeholder="Comentarios sobre Solución" value={form.comentariosSolucion} onChange={e => setForm({ ...form, comentariosSolucion: e.target.value })} />
-                <Input type="file" multiple onChange={e => setForm({ ...form, archivosSolucion: e.target.files })} />
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="pruebas">
-              <AccordionTrigger>Pruebas</AccordionTrigger>
-              <AccordionContent>
-                <Textarea placeholder="Comentarios sobre Pruebas" value={form.comentariosPruebas} onChange={e => setForm({ ...form, comentariosPruebas: e.target.value })} />
-                <Input type="file" multiple onChange={e => setForm({ ...form, archivosPruebas: e.target.files })} />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-
-          <Button type="submit">Enviar</Button>
-        </form>
+        <Button onClick={handleSubmit}>Enviar</Button>
       </CardContent>
     </Card>
-  )
+  );
 }
