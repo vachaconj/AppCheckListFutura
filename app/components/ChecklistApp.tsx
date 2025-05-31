@@ -27,7 +27,41 @@ export default function ChecklistApp() {
     archivosDiagnostico: null as FileList | null,
     archivosSolucion: null as FileList | null,
     archivosPruebas: null as FileList | null,
+    transcripcionAudio: '',
   });
+
+  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
+
+  const startRecording = () => {
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Tu navegador no soporta reconocimiento de voz.");
+      return;
+    }
+    const recog = new SpeechRecognition();
+    recog.lang = 'es-ES';
+    recog.continuous = false;
+    recog.interimResults = false;
+
+    recog.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0][0].transcript;
+      setForm(prev => ({ ...prev, transcripcionAudio: transcript }));
+    };
+
+    recog.onerror = (event: any) => {
+      console.error('Error de reconocimiento de voz:', event.error);
+    };
+
+    recog.start();
+    setRecognition(recog);
+  };
+
+  const stopRecording = () => {
+    if (recognition) {
+      recognition.stop();
+      setRecognition(null);
+    }
+  };
 
   const diagnosticoOpciones = [
     'No imprime negro / color faltante',
@@ -142,6 +176,19 @@ export default function ChecklistApp() {
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm({ ...form, comentariosPruebas: e.target.value })}
             onFileChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileChange('archivosPruebas', e.target.files)}
           />
+
+          <div className="space-y-2">
+            <Label>🎤 Transcripción por Voz</Label>
+            <div className="flex gap-2">
+              <Button type="button" onClick={startRecording}>🎙 Iniciar Grabación</Button>
+              <Button type="button" onClick={stopRecording}>⏹ Detener</Button>
+            </div>
+            <Textarea
+              readOnly
+              placeholder="Texto transcrito desde el micrófono..."
+              value={form.transcripcionAudio}
+            />
+          </div>
 
           <Button type="submit">Enviar</Button>
         </form>
