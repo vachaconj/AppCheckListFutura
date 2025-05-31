@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,39 +27,43 @@ export default function ChecklistApp() {
     archivosDiagnostico: null as FileList | null,
     archivosSolucion: null as FileList | null,
     archivosPruebas: null as FileList | null,
-    transcripcionAudio: '',
+    transcripcionVoz: '',
   });
 
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
+  const [grabando, setGrabando] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const startRecording = () => {
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Tu navegador no soporta reconocimiento de voz.");
-      return;
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'es-PE';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        const texto = event.results[0][0].transcript;
+        setForm((prev) => ({ ...prev, transcripcionVoz: prev.transcripcionVoz + ' ' + texto }));
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Error en reconocimiento de voz:', event.error);
+      };
+
+      recognitionRef.current = recognition;
     }
-    const recog = new SpeechRecognition();
-    recog.lang = 'es-ES';
-    recog.continuous = false;
-    recog.interimResults = false;
+  }, []);
 
-    recog.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0][0].transcript;
-      setForm(prev => ({ ...prev, transcripcionAudio: transcript }));
-    };
-
-    recog.onerror = (event: any) => {
-      console.error('Error de reconocimiento de voz:', event.error);
-    };
-
-    recog.start();
-    setRecognition(recog);
-  };
-
-  const stopRecording = () => {
-    if (recognition) {
-      recognition.stop();
-      setRecognition(null);
+  const handleStartStop = () => {
+    if (!recognitionRef.current) return;
+    if (grabando) {
+      recognitionRef.current.stop();
+      setGrabando(false);
+    } else {
+      setForm((prev) => ({ ...prev, transcripcionVoz: '' }));
+      recognitionRef.current.start();
+      setGrabando(true);
     }
   };
 
@@ -118,18 +122,18 @@ export default function ChecklistApp() {
         <h1 className="text-lg font-bold text-center">Checklist de Visita Técnica</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input placeholder="Cliente" value={form.cliente} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, cliente: e.target.value })} />
-          <Input placeholder="Dirección" value={form.direccion} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, direccion: e.target.value })} />
-          <Input placeholder="Ciudad" value={form.ciudad} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, ciudad: e.target.value })} />
-          <Input placeholder="Técnico" value={form.tecnico} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, tecnico: e.target.value })} />
-          <Input type="date" value={form.fecha} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, fecha: e.target.value })} />
+          <Input placeholder="Cliente" value={form.cliente} onChange={(e) => setForm({ ...form, cliente: e.target.value })} />
+          <Input placeholder="Dirección" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
+          <Input placeholder="Ciudad" value={form.ciudad} onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
+          <Input placeholder="Técnico" value={form.tecnico} onChange={(e) => setForm({ ...form, tecnico: e.target.value })} />
+          <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
 
           <div>
             <Label className="block mb-1">Código SKU</Label>
             <Input
               type="text"
               value={form.sku}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, sku: e.target.value })}
+              onChange={(e) => setForm({ ...form, sku: e.target.value })}
               list="sku-options"
               placeholder="Buscar SKU..."
             />
@@ -143,7 +147,7 @@ export default function ChecklistApp() {
           <Textarea
             placeholder="Observaciones generales"
             value={form.observaciones}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm({ ...form, observaciones: e.target.value })}
+            onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
           />
 
           <div className="flex gap-4">
@@ -157,37 +161,36 @@ export default function ChecklistApp() {
             title="Diagnostico"
             options={diagnosticoOpciones}
             value={form.comentariosDiagnostico}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm({ ...form, comentariosDiagnostico: e.target.value })}
-            onFileChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileChange('archivosDiagnostico', e.target.files)}
+            onChange={(e) => setForm({ ...form, comentariosDiagnostico: e.target.value })}
+            onFileChange={(e) => handleFileChange('archivosDiagnostico', e.target.files)}
           />
 
           <AccordionSection
             title="Solucion"
             options={solucionOpciones}
             value={form.comentariosSolucion}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm({ ...form, comentariosSolucion: e.target.value })}
-            onFileChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileChange('archivosSolucion', e.target.files)}
+            onChange={(e) => setForm({ ...form, comentariosSolucion: e.target.value })}
+            onFileChange={(e) => handleFileChange('archivosSolucion', e.target.files)}
           />
 
           <AccordionSection
             title="Pruebas"
             options={pruebasOpciones}
             value={form.comentariosPruebas}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm({ ...form, comentariosPruebas: e.target.value })}
-            onFileChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileChange('archivosPruebas', e.target.files)}
+            onChange={(e) => setForm({ ...form, comentariosPruebas: e.target.value })}
+            onFileChange={(e) => handleFileChange('archivosPruebas', e.target.files)}
           />
 
           <div className="space-y-2">
-            <Label>🎤 Transcripción por Voz</Label>
-            <div className="flex gap-2">
-              <Button type="button" onClick={startRecording}>🎙 Iniciar Grabación</Button>
-              <Button type="button" onClick={stopRecording}>⏹ Detener</Button>
-            </div>
+            <Label>Transcripción por voz</Label>
             <Textarea
-              readOnly
-              placeholder="Texto transcrito desde el micrófono..."
-              value={form.transcripcionAudio}
+              placeholder="Texto dictado por voz..."
+              value={form.transcripcionVoz}
+              onChange={(e) => setForm({ ...form, transcripcionVoz: e.target.value })}
             />
+            <Button type="button" onClick={handleStartStop}>
+              {grabando ? '⏹️ Detener' : '🎤 Grabar comentario'}
+            </Button>
           </div>
 
           <Button type="submit">Enviar</Button>
