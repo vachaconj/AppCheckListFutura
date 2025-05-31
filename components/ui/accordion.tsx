@@ -1,58 +1,43 @@
-'use client';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
-import * as AccordionPrimitive from '@radix-ui/react-accordion';
-import { ChevronDownIcon } from '@radix-ui/react-icons';
-import * as React from 'react';
-
-import { cn } from '@/lib/utils';
-
-const Accordion = AccordionPrimitive.Root;
-
-const AccordionItem = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
->(({ className, ...props }, ref) => (
-  <AccordionPrimitive.Item
-    ref={ref}
-    className={cn('border-b', className)}
-    {...props}
-  />
-));
-AccordionItem.displayName = 'AccordionItem';
-
-const AccordionTrigger = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <AccordionPrimitive.Header className="flex">
-    <AccordionPrimitive.Trigger
-      ref={ref}
-      className={cn(
-        'flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline',
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <ChevronDownIcon className="h-4 w-4 transition-transform duration-200" />
-    </AccordionPrimitive.Trigger>
-  </AccordionPrimitive.Header>
-));
-AccordionTrigger.displayName = 'AccordionTrigger';
-
-const AccordionContent = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <AccordionPrimitive.Content
-    ref={ref}
-    className={cn(
-      'overflow-hidden text-sm transition-all data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up',
-      className
-    )}
-    {...props}
-  />
-));
-AccordionContent.displayName = 'AccordionContent';
-
-export { Accordion, AccordionItem, AccordionTrigger, AccordionContent };
+export function AccordionSection({
+  title,
+  options,
+  value,
+  onChange,
+  onFileChange
+}: {
+  title: string;
+  options: string[];
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <div>
+      <details className="mb-4">
+        <summary className="cursor-pointer font-semibold">{title}</summary>
+        <div className="pl-4 mt-2 space-y-2">
+          {options.map((option, idx) => (
+            <div key={idx} className="flex items-center space-x-2">
+              <Checkbox id={`${title}-${idx}`} />
+              <Label htmlFor={`${title}-${idx}`}>{option}</Label>
+            </div>
+          ))}
+          <Textarea
+            placeholder={`Comentarios sobre ${title}`}
+            value={value}
+            onChange={onChange}
+          />
+          <div>
+            <Label>Fotos y videos de {title}</Label>
+            <Input type="file" accept="image/*,video/*" multiple onChange={onFileChange} />
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
