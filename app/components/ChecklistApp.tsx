@@ -24,48 +24,11 @@ export default function ChecklistApp() {
     comentariosDiagnostico: '',
     comentariosSolucion: '',
     comentariosPruebas: '',
+    transcripcion: '',
     archivosDiagnostico: null as FileList | null,
     archivosSolucion: null as FileList | null,
     archivosPruebas: null as FileList | null,
-    transcripcionVoz: '',
   });
-
-  const [grabando, setGrabando] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-
-  useEffect(() => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'es-PE';
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        const texto = event.results[0][0].transcript;
-        setForm((prev) => ({ ...prev, transcripcionVoz: prev.transcripcionVoz + ' ' + texto }));
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Error en reconocimiento de voz:', event.error);
-      };
-
-      recognitionRef.current = recognition;
-    }
-  }, []);
-
-  const handleStartStop = () => {
-    if (!recognitionRef.current) return;
-    if (grabando) {
-      recognitionRef.current.stop();
-      setGrabando(false);
-    } else {
-      setForm((prev) => ({ ...prev, transcripcionVoz: '' }));
-      recognitionRef.current.start();
-      setGrabando(true);
-    }
-  };
 
   const diagnosticoOpciones = [
     'No imprime negro / color faltante',
@@ -105,6 +68,40 @@ export default function ChecklistApp() {
     'Test en materiales diversos (PET, DTF, UV)',
     'Confirmación en software RIP'
   ];
+
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const isRecordingRef = useRef(false);
+
+  useEffect(() => {
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognitionClass) {
+      const recognition = new SpeechRecognitionClass();
+      recognition.lang = 'es-PE';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        const transcript = event.results[0][0].transcript;
+        setForm((prev) => ({ ...prev, transcripcion: prev.transcripcion + ' ' + transcript }));
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  const handleStartRecording = () => {
+    if (recognitionRef.current && !isRecordingRef.current) {
+      recognitionRef.current.start();
+      isRecordingRef.current = true;
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (recognitionRef.current && isRecordingRef.current) {
+      recognitionRef.current.stop();
+      isRecordingRef.current = false;
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -181,16 +178,17 @@ export default function ChecklistApp() {
             onFileChange={(e) => handleFileChange('archivosPruebas', e.target.files)}
           />
 
-          <div className="space-y-2">
-            <Label>Transcripción por voz</Label>
+          <div>
+            <Label>Transcripción de voz a texto</Label>
             <Textarea
-              placeholder="Texto dictado por voz..."
-              value={form.transcripcionVoz}
-              onChange={(e) => setForm({ ...form, transcripcionVoz: e.target.value })}
+              value={form.transcripcion}
+              onChange={(e) => setForm({ ...form, transcripcion: e.target.value })}
+              placeholder="Aquí aparecerá el texto grabado..."
             />
-            <Button type="button" onClick={handleStartStop}>
-              {grabando ? '⏹️ Detener' : '🎤 Grabar comentario'}
-            </Button>
+            <div className="flex gap-2 mt-2">
+              <Button type="button" onClick={handleStartRecording}>Grabar</Button>
+              <Button type="button" onClick={handleStopRecording}>Detener</Button>
+            </div>
           </div>
 
           <Button type="submit">Enviar</Button>
