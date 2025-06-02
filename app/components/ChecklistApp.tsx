@@ -73,21 +73,30 @@ export default function ChecklistApp() {
   const isRecordingRef = useRef(false);
 
   useEffect(() => {
-    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognitionClass) {
-      const recognition = new SpeechRecognitionClass();
-      recognition.lang = 'es-PE';
-      recognition.continuous = false;
-      recognition.interimResults = false;
+  type ExtendedWindow = typeof window & {
+    webkitSpeechRecognition?: new () => SpeechRecognition;
+  };
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        const transcript = event.results[0][0].transcript;
-        setForm((prev) => ({ ...prev, transcripcion: prev.transcripcion + ' ' + transcript }));
-      };
+  const speechWindow = window as ExtendedWindow;
+  const SpeechRecognitionClass = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
 
-      recognitionRef.current = recognition;
-    }
-  }, []);
+  if (SpeechRecognitionClass) {
+    const recognition = new SpeechRecognitionClass();
+    recognition.lang = 'es-PE';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0][0].transcript;
+      setForm((prev) => ({
+        ...prev,
+        transcripcion: prev.transcripcion + ' ' + transcript,
+      }));
+    };
+
+    recognitionRef.current = recognition;
+  }
+}, []);
 
   const handleStartRecording = () => {
     if (recognitionRef.current && !isRecordingRef.current) {
