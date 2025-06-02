@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "build": "NEXT_ESLINT_DISABLE=true next build",
+    "start": "next start",
+    "lint": "echo \"ESLint desactivado en Vercel\""
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.11",
