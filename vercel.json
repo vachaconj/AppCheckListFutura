@@ -6,7 +6,7 @@
   },
   "functions": {
     "api/submit/route.ts": {
-      "includeFiles": ["credentials/gsheets-credentials.json"]
+      "includeFiles": "credentials/gsheets-credentials.json"
     }
   }
 }
