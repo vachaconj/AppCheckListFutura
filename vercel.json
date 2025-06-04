@@ -1,0 +1,12 @@
+{
+  "build": {
+    "env": {
+      "SPREADSHEET_ID": "@SPREADSHEET_ID"
+    }
+  },
+  "functions": {
+    "api/submit/route.ts": {
+      "includeFiles": ["credentials/gsheets-credentials.json"]
+    }
+  }
+}
