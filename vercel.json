@@ -1,7 +1,7 @@
 {
   "build": {
     "env": {
-      "SPREADSHEET_ID": "@SPREADSHEET_ID"
+      "SPREADSHEET_ID": "1F-yBqqrcFzy_mzu06pEymkHv02GTTd0eDyTGrP7gP0A"
     }
   },
   "functions": {
