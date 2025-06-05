@@ -1,19 +1,19 @@
-// app/api// app/api/submit/route.ts
+// app/api/submit/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import formidable, { Fields, Files, File } from "formidable";
 import { google } from "googleapis";
-import formidable from "formidable";
 import fs from "fs";
 
 /* ------------------------------------------------------------------ */
-/* 0) Helpers para convertir campos                                   */
+/* 0) Utilidades con tipado estricto                                   */
 /* ------------------------------------------------------------------ */
-const toStr = (val: any): string =>
-  Array.isArray(val) ? (val[0] as string) ?? "" : typeof val === "string" ? val : "";
+const toStr = (val: unknown): string =>
+  Array.isArray(val) ? ((val[0] as string) ?? "") : typeof val === "string" ? val : "";
 
-const toYesNo = (val: any): "Sí" | "No" =>
+const toYesNo = (val: unknown): "Sí" | "No" =>
   val === "on" || val === "Sí" || val === true ? "Sí" : "No";
 
-const toCSV = (val: any): string =>
+const toCSV = (val: unknown): string =>
   Array.isArray(val)
     ? (val as string[]).filter(Boolean).join(", ")
     : typeof val === "string"
@@ -21,24 +21,24 @@ const toCSV = (val: any): string =>
     : "";
 
 /* ------------------------------------------------------------------ */
-/* 1) Deshabilitamos bodyParser nativo (multipart/form-data)           */
+/* 1) Desactivar bodyParser nativo para multipart/form-data            */
 /* ------------------------------------------------------------------ */
-export const config = {
-  api: { bodyParser: false },
-};
+export const config = { api: { bodyParser: false } };
 
 /* ------------------------------------------------------------------ */
-/* 2) Handler POST /api/submit                                         */
+/* 2) POST handler                                                     */
 /* ------------------------------------------------------------------ */
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
     /* ---------- 2.1 Parsear multipart ---------- */
     const form = formidable({ multiples: true });
+
     const { fields, files } = await new Promise<{
-      fields: formidable.Fields;
-      files: formidable.Files;
+      fields: Fields;
+      files: Files;
     }>((resolve, reject) => {
-      form.parse(request as any, (err, flds, fls) => {
+      // formidable espera un IncomingMessage clásico → cast
+      form.parse(req as unknown as any, (err, flds, fls) => {
         if (err) return reject(err);
         resolve({ fields: flds, files: fls });
       });
@@ -69,9 +69,9 @@ export async function POST(request: NextRequest) {
     const transcripcionVoz       = toStr(fields.transcripcionVoz);
 
     /* ---------- 4) Autenticación Google ---------- */
-    const credsJson      = process.env.GSHEETS_CREDENTIALS_JSON!;
-    const credentials    = JSON.parse(credsJson);
-    const spreadsheetId  = process.env.SPREADSHEET_ID!;
+    const credsJson     = process.env.GSHEETS_CREDENTIALS_JSON!;
+    const credentials   = JSON.parse(credsJson);
+    const spreadsheetId = process.env.SPREADSHEET_ID!;
 
     const auth = new google.auth.GoogleAuth({
       credentials,
@@ -81,13 +81,13 @@ export async function POST(request: NextRequest) {
       ],
     });
 
-    const drive   = google.drive({ version: "v3", auth });
-    const sheets  = google.sheets({ version: "v4", auth });
+    const drive  = google.drive({ version: "v3", auth });
+    const sheets = google.sheets({ version: "v4", auth });
 
     /* ---------- 5) Subir archivos a Drive y obtener URLs ---------- */
-    const uploadFile = async (file: formidable.File): Promise<string> => {
+    const upload = async (file: File): Promise<string> => {
       const stream = fs.createReadStream(file.filepath);
-      const created = await drive.files.create({
+      const res = await drive.files.create({
         requestBody: {
           name: file.originalFilename ?? "sin-nombre",
           mimeType: file.mimetype ?? undefined,
@@ -95,30 +95,32 @@ export async function POST(request: NextRequest) {
         media: { mimeType: file.mimetype ?? undefined, body: stream },
         fields: "id,webViewLink",
       });
-      const fileId = created.data.id!;
+      const fileId = res.data.id!;
       await drive.permissions.create({
         fileId,
         requestBody: { role: "reader", type: "anyone" },
       });
-      return created.data.webViewLink ?? "";
+      return res.data.webViewLink ?? "";
     };
 
-    const gatherUrls = async (f: any): Promise<string> => {
-      if (!f) return "";
-      const arr = Array.isArray(f) ? f : [f];
+    const gather = async (
+      fl: File | File[] | undefined
+    ): Promise<string> => {
+      if (!fl) return "";
+      const arr = Array.isArray(fl) ? fl : [fl];
       const urls: string[] = [];
-      for (const file of arr) {
-        const url = await uploadFile(file as formidable.File);
-        if (url) urls.push(url);
+      for (const f of arr) {
+        const url = await upload(f);
+        urls.push(url);
       }
       return urls.join(", ");
     };
 
-    const fotosDiagnosticoUrls = await gatherUrls(files.diagnosticoFiles);
-    const fotosSolucionUrls    = await gatherUrls(files.solucionFiles);
-    const fotosPruebasUrls     = await gatherUrls(files.pruebasFiles);
+    const fotosDiagnosticoUrls = await gather(files.diagnosticoFiles as File | File[] | undefined);
+    const fotosSolucionUrls    = await gather(files.solucionFiles    as File | File[] | undefined);
+    const fotosPruebasUrls     = await gather(files.pruebasFiles     as File | File[] | undefined);
 
-    /* ---------- 6) Construir la fila para Sheets ---------- */
+    /* ---------- 6) Insertar fila en Google Sheets ---------- */
     const newRow = [
       timestamp, cliente, direccion, ciudad, tecnico, fechaVisita, codigoSKU,
       observacionesGenerales, clienteSatisfecho, seEntregoInstructivo,
@@ -134,16 +136,12 @@ export async function POST(request: NextRequest) {
       requestBody: { values: [newRow] },
     });
 
-    /* ---------- 7) Respuesta OK ---------- */
-    return NextResponse.json(
-      { message: "Registro guardado correctamente." },
-      { status: 200 },
-    );
-  } catch (err: any) {
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err: unknown) {
     console.error("Error en /api/submit:", err);
     return NextResponse.json(
-      { error: err.message ?? "Error desconocido." },
-      { status: 500 },
+      { error: (err as Error).message ?? "Error desconocido" },
+      { status: 500 }
     );
   }
 }
