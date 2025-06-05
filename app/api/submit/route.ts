@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import formidable, { Fields, Files, File } from "formidable";
 import { google } from "googleapis";
+import type { IncomingMessage } from "http";
 import fs from "fs";
 
 /* ------------------------------------------------------------------ */
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
       files: Files;
     }>((resolve, reject) => {
       // formidable espera un IncomingMessage clásico → cast
-      form.parse(req as unknown as any, (err, flds, fls) => {
+      form.parse(req as unknown as IncomingMessage, (err, flds, fls) => {
         if (err) return reject(err);
         resolve({ fields: flds, files: fls });
       });
