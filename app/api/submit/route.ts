@@ -1,288 +1,149 @@
-// app/api/submit/route.ts
-
+// app/api// app/api/submit/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import formidable from "formidable";
 import fs from "fs";
-import path from "path";
 
-// 1) Deshabilitamos el bodyParser nativo de Next.js para leer multipart/form-data
+/* ------------------------------------------------------------------ */
+/* 0) Helpers para convertir campos                                   */
+/* ------------------------------------------------------------------ */
+const toStr = (val: any): string =>
+  Array.isArray(val) ? (val[0] as string) ?? "" : typeof val === "string" ? val : "";
+
+const toYesNo = (val: any): "Sí" | "No" =>
+  val === "on" || val === "Sí" || val === true ? "Sí" : "No";
+
+const toCSV = (val: any): string =>
+  Array.isArray(val)
+    ? (val as string[]).filter(Boolean).join(", ")
+    : typeof val === "string"
+    ? val
+    : "";
+
+/* ------------------------------------------------------------------ */
+/* 1) Deshabilitamos bodyParser nativo (multipart/form-data)           */
+/* ------------------------------------------------------------------ */
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false },
 };
 
-// 2) Función que maneja POST /api/submit
+/* ------------------------------------------------------------------ */
+/* 2) Handler POST /api/submit                                         */
+/* ------------------------------------------------------------------ */
 export async function POST(request: NextRequest) {
   try {
-    // 2.1) Inicializamos formidable para parsear campos y archivos
+    /* ---------- 2.1 Parsear multipart ---------- */
     const form = formidable({ multiples: true });
-
-    // 2.2) Envolvemos form.parse en una Promise para poder usar await
-    const parseForm = (): Promise<{
+    const { fields, files } = await new Promise<{
       fields: formidable.Fields;
       files: formidable.Files;
-    }> => {
-      return new Promise((resolve, reject) => {
-        form.parse(request as any, (err, fields, files) => {
-          if (err) return reject(err);
-          resolve({ fields, files });
-        });
+    }>((resolve, reject) => {
+      form.parse(request as any, (err, flds, fls) => {
+        if (err) return reject(err);
+        resolve({ fields: flds, files: fls });
       });
-    };
+    });
 
-    const { fields, files } = await parseForm();
+    /* ---------- 3) Convertir campos ---------- */
+    const timestamp              = new Date().toISOString();
+    const cliente                = toStr(fields.cliente);
+    const direccion              = toStr(fields.direccion);
+    const ciudad                 = toStr(fields.ciudad);
+    const tecnico                = toStr(fields.tecnico);
+    const fechaVisita            = toStr(fields.fechaVisita);
+    const codigoSKU              = toStr(fields.codigoSKU);
+    const observacionesGenerales = toStr(fields.observacionesGenerales);
 
-    // ------------------------------------------------------------
-    // 3) Extraer cada campo de text o checkbox sin hacer casts directos
-    // ------------------------------------------------------------
+    const clienteSatisfecho      = toYesNo(fields.clienteSatisfecho);
+    const seEntregoInstructivo   = toYesNo(fields.seEntregoInstructivo);
 
-    // Timestamp
-    const timestamp = new Date().toISOString();
+    const diagnostico            = toCSV(fields.diagnostico);
+    const comentariosDiagnostico = toStr(fields.comentariosDiagnostico);
 
-    // Campos de texto (si viniera undefined, usamos "")
-    const cliente = typeof fields.cliente === "string" ? fields.cliente : "";
-    const direccion =
-      typeof fields.direccion === "string" ? fields.direccion : "";
-    const ciudad = typeof fields.ciudad === "string" ? fields.ciudad : "";
-    const tecnico = typeof fields.tecnico === "string" ? fields.tecnico : "";
-    const fechaVisita =
-      typeof fields.fechaVisita === "string" ? fields.fechaVisita : "";
-    const codigoSKU =
-      typeof fields.codigoSKU === "string" ? fields.codigoSKU : "";
-    const observacionesGenerales =
-      typeof fields.observacionesGenerales === "string"
-        ? fields.observacionesGenerales
-        : "";
+    const solucion               = toCSV(fields.solucion);
+    const comentariosSolucion    = toStr(fields.comentariosSolucion);
 
-    // Checkboxes “Cliente satisfecho” y “Se entregó instructivo”
-    // Puede venir “on”, “Sí” u otro string, o bien undefined
-    const rawClienteSatisfecho = fields.clienteSatisfecho;
-    const rawSeEntregoInstrucciones = fields.seEntregoInstructivo;
+    const pruebas                = toCSV(fields.pruebas);
+    const comentariosPruebas     = toStr(fields.comentariosPruebas);
 
-    const clienteSatisfecho =
-      typeof rawClienteSatisfecho === "string" &&
-      (rawClienteSatisfecho === "on" || rawClienteSatisfecho === "Sí")
-        ? "Sí"
-        : "No";
+    const transcripcionVoz       = toStr(fields.transcripcionVoz);
 
-    const seEntregoInstructivo =
-      typeof rawSeEntregoInstrucciones === "string" &&
-      (rawSeEntregoInstrucciones === "on" ||
-        rawSeEntregoInstrucciones === "Sí")
-        ? "Sí"
-        : "No";
+    /* ---------- 4) Autenticación Google ---------- */
+    const credsJson      = process.env.GSHEETS_CREDENTIALS_JSON!;
+    const credentials    = JSON.parse(credsJson);
+    const spreadsheetId  = process.env.SPREADSHEET_ID!;
 
-    // ------------------------------------------------------------
-    // Diagnóstico: puede venir como string o string[] o undefined
-    // ------------------------------------------------------------
-    const rawDiagnostico = fields.diagnostico; // tipo any
-    let diagnostico = "";
-    if (Array.isArray(rawDiagnostico)) {
-      // Si es array (string[])
-      // Filtramos únicamente valores de tipo string y ignoramos undefined
-      const soloStrings = rawDiagnostico.filter(
-        (x): x is string => typeof x === "string"
-      );
-      diagnostico = soloStrings.join(", ");
-    } else if (typeof rawDiagnostico === "string") {
-      diagnostico = rawDiagnostico;
-    }
-
-    const comentariosDiagnostico =
-      typeof fields.comentariosDiagnostico === "string"
-        ? fields.comentariosDiagnostico
-        : "";
-
-    // ------------------------------------------------------------
-    // Solución: string | string[] | undefined
-    // ------------------------------------------------------------
-    const rawSolucion = fields.solucion;
-    let solucion = "";
-    if (Array.isArray(rawSolucion)) {
-      const soloStrings = rawSolucion.filter(
-        (x): x is string => typeof x === "string"
-      );
-      solucion = soloStrings.join(", ");
-    } else if (typeof rawSolucion === "string") {
-      solucion = rawSolucion;
-    }
-
-    const comentariosSolucion =
-      typeof fields.comentariosSolucion === "string"
-        ? fields.comentariosSolucion
-        : "";
-
-    // ------------------------------------------------------------
-    // Pruebas: string | string[] | undefined
-    // ------------------------------------------------------------
-    const rawPruebas = fields.pruebas;
-    let pruebas = "";
-    if (Array.isArray(rawPruebas)) {
-      const soloStrings = rawPruebas.filter(
-        (x): x is string => typeof x === "string"
-      );
-      pruebas = soloStrings.join(", ");
-    } else if (typeof rawPruebas === "string") {
-      pruebas = rawPruebas;
-    }
-
-    const comentariosPruebas =
-      typeof fields.comentariosPruebas === "string"
-        ? fields.comentariosPruebas
-        : "";
-
-    // ------------------------------------------------------------
-    // Transcripción de voz a texto: string | undefined
-    // ------------------------------------------------------------
-    const transcripcionVoz =
-      typeof fields.transcripcionVoz === "string"
-        ? fields.transcripcionVoz
-        : "";
-
-    // ------------------------------------------------------------
-    // 4) Autenticar con Google y subir archivos a Drive
-    // ------------------------------------------------------------
     const auth = new google.auth.GoogleAuth({
-      keyFile: path.join(
-        process.cwd(),
-        "credentials",
-        "gsheets-credentials.json"
-      ),
+      credentials,
       scopes: [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
       ],
     });
 
-    const drive = google.drive({ version: "v3", auth });
+    const drive   = google.drive({ version: "v3", auth });
+    const sheets  = google.sheets({ version: "v4", auth });
 
-    // Función auxiliar: sube un archivo a Drive y retorna su webViewLink (URL pública)
-    const uploadSingleFile = async (file: formidable.File): Promise<string> => {
-      // Lee el stream desde el disco
-      const fileStream = fs.createReadStream(file.filepath);
-
+    /* ---------- 5) Subir archivos a Drive y obtener URLs ---------- */
+    const uploadFile = async (file: formidable.File): Promise<string> => {
+      const stream = fs.createReadStream(file.filepath);
       const created = await drive.files.create({
         requestBody: {
-          name: file.originalFilename || "sin-nombre",
-          mimeType: file.mimetype || undefined,
+          name: file.originalFilename ?? "sin-nombre",
+          mimeType: file.mimetype ?? undefined,
         },
-        media: {
-          mimeType: file.mimetype || undefined,
-          body: fileStream,
-        },
+        media: { mimeType: file.mimetype ?? undefined, body: stream },
         fields: "id,webViewLink",
       });
-
       const fileId = created.data.id!;
-      // Otorgar permiso público “anyone with link can read”
       await drive.permissions.create({
         fileId,
-        requestBody: {
-          role: "reader",
-          type: "anyone",
-        },
+        requestBody: { role: "reader", type: "anyone" },
       });
-
-      return created.data.webViewLink || "";
+      return created.data.webViewLink ?? "";
     };
 
-    // 4.1) Subir archivos de Diagnóstico (si existen)
-    let fotosDiagnosticoUrls = "";
-    if (files.diagnosticoFiles) {
-      const diagFiles = Array.isArray(files.diagnosticoFiles)
-        ? files.diagnosticoFiles
-        : [files.diagnosticoFiles];
+    const gatherUrls = async (f: any): Promise<string> => {
+      if (!f) return "";
+      const arr = Array.isArray(f) ? f : [f];
       const urls: string[] = [];
-      for (const f of diagFiles) {
-        // f es de tipo formidable.File
-        const url = await uploadSingleFile(f as formidable.File);
+      for (const file of arr) {
+        const url = await uploadFile(file as formidable.File);
         if (url) urls.push(url);
       }
-      fotosDiagnosticoUrls = urls.join(", ");
-    }
+      return urls.join(", ");
+    };
 
-    // 4.2) Subir archivos de Solución (si existen)
-    let fotosSolucionUrls = "";
-    if (files.solucionFiles) {
-      const solFiles = Array.isArray(files.solucionFiles)
-        ? files.solucionFiles
-        : [files.solucionFiles];
-      const urls: string[] = [];
-      for (const f of solFiles) {
-        const url = await uploadSingleFile(f as formidable.File);
-        if (url) urls.push(url);
-      }
-      fotosSolucionUrls = urls.join(", ");
-    }
+    const fotosDiagnosticoUrls = await gatherUrls(files.diagnosticoFiles);
+    const fotosSolucionUrls    = await gatherUrls(files.solucionFiles);
+    const fotosPruebasUrls     = await gatherUrls(files.pruebasFiles);
 
-    // 4.3) Subir archivos de Pruebas (si existen)
-    let fotosPruebasUrls = "";
-    if (files.pruebasFiles) {
-      const pruFiles = Array.isArray(files.pruebasFiles)
-        ? files.pruebasFiles
-        : [files.pruebasFiles];
-      const urls: string[] = [];
-      for (const f of pruFiles) {
-        const url = await uploadSingleFile(f as formidable.File);
-        if (url) urls.push(url);
-      }
-      fotosPruebasUrls = urls.join(", ");
-    }
-
-    // ------------------------------------------------------------
-    // 5) Construir la fila con los 20 valores en el orden exacto
-    // ------------------------------------------------------------
+    /* ---------- 6) Construir la fila para Sheets ---------- */
     const newRow = [
-      timestamp,               // A: Timestamp
-      cliente,                 // B: Cliente
-      direccion,               // C: Dirección
-      ciudad,                  // D: Ciudad
-      tecnico,                 // E: Técnico
-      fechaVisita,             // F: Fecha de visita
-      codigoSKU,               // G: Código SKU
-      observacionesGenerales,  // H: Observaciones generales
-      clienteSatisfecho,       // I: Cliente satisfecho
-      seEntregoInstructivo,    // J: Se entregó instructivo
-      diagnostico,             // K: Diagnóstico (string con comas)
-      comentariosDiagnostico,  // L: Comentarios Diagnóstico
-      fotosDiagnosticoUrls,    // M: Fotos y vídeos Diagnóstico (URLs)
-      solucion,                // N: Solución
-      comentariosSolucion,     // O: Comentarios Solución
-      fotosSolucionUrls,       // P: Fotos y vídeos Solución (URLs)
-      pruebas,                 // Q: Pruebas
-      comentariosPruebas,      // R: Comentarios Pruebas
-      fotosPruebasUrls,        // S: Fotos y vídeos Pruebas (URLs)
-      transcripcionVoz,        // T: Transcripción de voz a texto
+      timestamp, cliente, direccion, ciudad, tecnico, fechaVisita, codigoSKU,
+      observacionesGenerales, clienteSatisfecho, seEntregoInstructivo,
+      diagnostico, comentariosDiagnostico, fotosDiagnosticoUrls,
+      solucion, comentariosSolucion, fotosSolucionUrls,
+      pruebas, comentariosPruebas, fotosPruebasUrls, transcripcionVoz,
     ];
 
-    // ------------------------------------------------------------
-    // 6) Abrir la hoja de cálculo y hacer append
-    // ------------------------------------------------------------
-    const sheets = google.sheets({ version: "v4", auth });
-    const spreadsheetId = process.env.SPREADSHEET_ID!;
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: "bd-atencion-futura!A1:T1",
       valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [newRow],
-      },
+      requestBody: { values: [newRow] },
     });
 
-    // ------------------------------------------------------------
-    // 7) Si todo salió OK, devolvemos JSON con status 200
-    // ------------------------------------------------------------
+    /* ---------- 7) Respuesta OK ---------- */
     return NextResponse.json(
       { message: "Registro guardado correctamente." },
-      { status: 200 }
+      { status: 200 },
     );
-  } catch (error: any) {
-    console.error("Error en /api/submit:", error);
+  } catch (err: any) {
+    console.error("Error en /api/submit:", err);
     return NextResponse.json(
-      { error: error.message || "Error desconocido." },
-      { status: 500 }
+      { error: err.message ?? "Error desconocido." },
+      { status: 500 },
     );
   }
 }
