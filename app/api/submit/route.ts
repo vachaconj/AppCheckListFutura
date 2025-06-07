@@ -1,52 +1,56 @@
 // app/api/submit/route.ts
 
-import type { IncomingMessage } from "http";
-import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob";
-import formidable, { Fields, Files } from "formidable";
-import fs from "fs/promises";
-import { Redis } from "@upstash/redis";
+/** 
+ * Fuerza a que esta función se ejecute bajo Node.js (no Edge)
+ */
+export const runtime = "nodejs";
 
-// 1) Deshabilitamos el body parser de Next.js para leer form-data
+/**
+ * Deshabilita el body parser de Next.js para poder usar formidable
+ */
 export const config = {
   api: {
     bodyParser: false,
   },
 };
 
-// 2) Creamos cliente Redis (Upstash) desde las env vars
+import { NextRequest, NextResponse } from "next/server";
+import formidable from "formidable";
+import fs from "fs/promises";
+import { put } from "@vercel/blob";
+import { Redis } from "@upstash/redis";
+
+// Inicializa Upstash Redis leyendo las ENV vars
 const redis = Redis.fromEnv();
 
 export async function POST(request: NextRequest) {
   try {
-    // --- Inicializamos formidable para parsear multipart/form-data ---
+    // 1) Prepara formidable para leer multipart
     const form = formidable({ multiples: true });
 
-    // --- Parseamos campos y archivos usando una Promise ---
-    const { fields, files }: { fields: Fields; files: Files } =
-      await new Promise((resolve, reject) => {
-        form.parse(
-          request as unknown as IncomingMessage,
-          (err, flds, fls) => {
-            if (err) return reject(err);
-            resolve({ fields: flds, files: fls });
-          }
-        );
-      });
+    // 2) Parsear request en Promise
+    const { fields, files } = await new Promise<{
+      fields: formidable.Fields;
+      files: formidable.Files;
+    }>((resolve, reject) => {
+      // formidable espera un IncomingMessage, así que casteamos
+      form.parse(request as any, (err, flds, fls) =>
+        err ? reject(err) : resolve({ fields: flds, files: fls })
+      );
+    });
 
-    // --- Subimos cada archivo a Vercel Blob y recogemos su URL ---
-    const uploads: Array<{ name: string; url: string }> = [];
-    for (const key of Object.keys(files)) {
+    // 3) Subir cada archivo a Vercel Blob
+    const uploads: { name: string; url: string }[] = [];
+    for (const key in files) {
       const fileOrArray = files[key];
       const file = Array.isArray(fileOrArray) ? fileOrArray[0] : fileOrArray;
       if (!file) continue;
 
-      const data = await fs.readFile(file.filepath);
-      // Vercel Blob solo acepta access: "public"
+      const buffer = await fs.readFile(file.filepath);
       const blob = await put(
         `tmp/${Date.now()}-${file.originalFilename}`,
-        data,
-        { access: "public" }
+        buffer,
+        { access: "public" } // único valor permitido
       );
       uploads.push({
         name: file.originalFilename ?? key,
@@ -54,22 +58,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // --- Encolamos la tarea en Redis (Upstash) para procesarla luego ---
+    // 4) Encolar tarea en Redis
     await redis.lpush(
       "checklist-queue",
-      JSON.stringify({
-        fields,
-        uploads,
-        timestamp: Date.now(),
-      })
+      JSON.stringify({ fields, uploads, ts: Date.now() })
     );
 
-    // --- Respondemos OK202 ---
+    // 5) Respuesta exitosa
     return NextResponse.json({ ok: true }, { status: 202 });
   } catch (error) {
     console.error("submit error", error);
-    return NextResponse.json({ ok: false, message: "Server error" }, { status: 500 });
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
-
-
