@@ -1,88 +1,83 @@
 // app/api/submit/route.ts
-export const runtime = "nodejs";   // ← fuerza a usar Serverless-Node
-import { NextRequest, NextResponse } from "next/server";
 
-import formidable, { File } from "formidable";
-import * as fs from "fs/promises";
+// 0) Forzar que esta función corra en Node.js (no Edge)
+export const runtime = "nodejs";
 
-import { put } from "@vercel/blob";          // ← sube archivos a Vercel Blob
-import { Redis } from "@upstash/redis";      // ← cola simple basada en Redis
-
-import type { IncomingMessage } from "http"; // para tipar la función de parseo
-
-/* -------------------------------------------------------------------------- */
-/*  1.  Desactivar el body-parser nativo:                                     */
-/* -------------------------------------------------------------------------- */
+// 1) Desactivar el body-parser nativo de Next.js
 export const config = {
-  api: { bodyParser: false },
+  api: {
+    bodyParser: false
+  }
 };
 
-/* -------------------------------------------------------------------------- */
-/*  2.  Cliente Redis (URL y TOKEN llegan de las env vars que creó Upstash)   */
-/* -------------------------------------------------------------------------- */
+import { NextRequest, NextResponse } from "next/server";
+import formidable, { File } from "formidable";
+import fs from "fs/promises";
+import { put } from "@vercel/blob";
+import { Redis } from "@upstash/redis";
+
+// 2) Inicializar cliente Redis desde las env vars inyectadas por Upstash
 const redis = Redis.fromEnv();
 
-/* -------------------------------------------------------------------------- */
-/*  3.  Helper: parsear multipart/form-data con formidable                    */
-/* -------------------------------------------------------------------------- */
+/**
+ * Helper para parsear multipart/form-data con formidable
+ */
 function parseMultipart(
-  req: IncomingMessage,
+  req: NextRequest
 ): Promise<{ fields: formidable.Fields; files: formidable.Files }> {
   const form = formidable({ multiples: true });
-
+  // formidable espera un IncomingMessage, hacemos un cast ligero
   return new Promise((resolve, reject) => {
-    form.parse(req, (err, fields, files) => {
+    form.parse(req as any, (err, fields, files) => {
       if (err) return reject(err);
       resolve({ fields, files });
     });
   });
 }
 
-/* -------------------------------------------------------------------------- */
-/*  4.  End-point POST                                                        */
-/* -------------------------------------------------------------------------- */
+/**
+ * POST /api/submit
+ * - parsea campos + archivos
+ * - sube cada archivo a Vercel Blob (access: "public")
+ * - empuja un mensaje JSON a la lista “checklist-queue” en Upstash Redis
+ * - responde 202 Accepted al cliente en <1s
+ */
 export async function POST(req: NextRequest) {
   try {
-    /* 4.1 Desmontar campos y archivos ------------------------------------- */
-    // NextRequest.body es un ReadableStream; formidable espera IncomingMessage
-    const { fields, files } = await parseMultipart(
-      req.body as unknown as IncomingMessage,
-    );
+    // 3.1) parsear formulario
+    const { fields, files } = await parseMultipart(req);
 
-    /* 4.2 Subir cada archivo a Blob --------------------------------------- */
+    // 3.2) subir los archivos a Blob y acumular URLs
     const uploads: { name: string; url: string }[] = [];
-
     for (const key of Object.keys(files)) {
       const entry = files[key];
-      // Formidable puede devolver File | File[]
       const file: File | undefined = Array.isArray(entry) ? entry[0] : entry;
       if (!file) continue;
 
-      const data = await fs.readFile(file.filepath);
-
+      const buffer = await fs.readFile(file.filepath);
       const blob = await put(
-        // Nombre temporal único dentro del bucket
         `tmp/${Date.now()}-${file.originalFilename ?? file.newFilename}`,
-        data,
-        { access: "public" },    // Desde abril-2025 solo se permite "public"
+        buffer,
+        { access: "public" }
       );
-
       uploads.push({ name: file.originalFilename ?? key, url: blob.url });
     }
 
-    /* 4.3 Meter la tarea en la cola Redis --------------------------------- */
-    await redis.lpush(
-      "checklist-queue",                     // Nombre de la lista
-      JSON.stringify({ ts: Date.now(), fields, uploads }),
-    );
+    // 3.3) construir el payload y encolarlo
+    const payload = {
+      ts: Date.now(),
+      fields,
+      uploads
+    };
+    await redis.lpush("checklist-queue", JSON.stringify(payload));
 
-    /* 4.4 Respuesta al frontend ------------------------------------------- */
+    // 3.4) responder al cliente rápidamente
     return NextResponse.json({ ok: true }, { status: 202 });
   } catch (err) {
-    console.error("[submit] error:", err);
+    console.error("[/api/submit] error:", err);
     return NextResponse.json(
-      { ok: false, error: "internal-error" },
-      { status: 500 },
+      { ok: false, error: (err as Error).message },
+      { status: 500 }
     );
   }
 }
