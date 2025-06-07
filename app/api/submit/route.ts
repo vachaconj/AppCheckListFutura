@@ -1,18 +1,26 @@
 // app/api/submit/route.ts
 import { NextResponse } from "next/server";
+import formidable from "formidable";
 
-// 1) Deshabilitamos el bodyParser nativo de Next.js
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+// Deshabilitamos el bodyParser nativo
+export const config = { api: { bodyParser: false } };
 
-// 2) Función que maneja POST /api/submit
-//    No usamos el request de momento, así que lo eliminamos de la firma.
 export async function POST() {
-  // esto llegará a los logs de Vercel
-  console.log("✅ /api/submit recibió una llamada");
+  // 1) Parsear
+  const form = formidable({ multiples: true });
+  const { fields, files } = await new Promise<{
+    fields: formidable.Fields;
+    files: formidable.Files;
+  }>((resolve, reject) => {
+    form.parse((null as any) /* NextRequest no tipado */, (err, flds, fls) => {
+      if (err) return reject(err);
+      resolve({ fields: flds, files: fls });
+    });
+  });
+
+  // 2) Ver en los logs qué llegó
+  console.log("💬 fields:", fields);
+  console.log("📎 files:", files);
+
   return NextResponse.json({ ok: true }, { status: 200 });
 }
-
