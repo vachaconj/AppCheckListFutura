@@ -1,64 +1,65 @@
 // app/api/submit/route.ts
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
-import formidable, { Fields, Files } from "formidable";
+import formidable from "formidable";
 import fs from "fs/promises";
 import { put } from "@vercel/blob";
 import { Redis } from "@upstash/redis";
 
-// 1) Deshabilitamos el bodyParser nativo de Next.js
+// 1) Deshabilitamos el bodyParser nativo de Next.js:
 export const config = {
-  api: { bodyParser: false },
+  api: {
+    bodyParser: false,
+  },
 };
 
-// 2) Creamos cliente Redis leyendo las vars de entorno
+// 2) Conectamos con Upstash Redis (lee URL y TOKEN desde tus env vars):
 const redis = Redis.fromEnv();
 
+// 3) Función que maneja POST /api/submit
 export async function POST(request: NextRequest) {
   try {
-    // 3) Parseamos el multipart/form-data con formidable
+    // 3.1) Parsear formulario multipart/form-data
     const form = formidable({ multiples: true });
-    const parseForm = (): Promise<{ fields: Fields; files: Files }> =>
-      new Promise((resolve, reject) => {
-        form.parse(request as any, (err, fields, files) => {
-          if (err) return reject(err);
-          resolve({ fields, files });
-        });
-      });
+    const { fields, files } = await new Promise<any>((resolve, reject) =>
+      form.parse(request as any, (err, flds, fls) =>
+        err ? reject(err) : resolve({ fields: flds, files: fls })
+      )
+    );
 
-    const { fields, files } = await parseForm();
-
-    // 4) Subimos cada archivo a Vercel Blob
+    // 3.2) Subir cada archivo a Vercel Blob y recoger la URL
     const uploads: { name: string; url: string }[] = [];
-    for (const key of Object.keys(files)) {
-      const fileOrArray = files[key];
-      const file = Array.isArray(fileOrArray) ? fileOrArray[0] : fileOrArray;
+    for (const key in files) {
+      const file = Array.isArray(files[key]) ? files[key][0] : files[key];
       if (!file) continue;
-
-      // Leemos el buffer y lo mandamos al blob
       const data = await fs.readFile(file.filepath);
+      // Sólo "public" está permitido por el SDK
       const blob = await put(
         `tmp/${Date.now()}-${file.originalFilename}`,
         data,
-        { access: "public" } // el SDK solo acepta "public"
+        { access: "public" }
       );
-
       uploads.push({
-        name: file.originalFilename ?? key,
+        name: file.originalFilename || key,
         url: blob.url,
       });
     }
 
-    // 5) Encolamos la tarea en Redis para procesar después
+    // 3.3) Encolar el payload en Redis para procesarlo en background
     await redis.lpush(
       "checklist-queue",
-      JSON.stringify({ fields, uploads, ts: Date.now() })
+      JSON.stringify({
+        fields,
+        uploads,
+        ts: Date.now(),
+      })
     );
 
-    // 6) Devolvemos 202 Accepted
+    // 3.4) Devolver 202 Accepted
     return NextResponse.json({ ok: true }, { status: 202 });
-  } catch (error) {
-    console.error("submit error", error);
-    return NextResponse.json({ ok: false, error: (error as Error).message }, { status: 500 });
+  } catch (err) {
+    console.error("submit error", err);
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
