@@ -1,64 +1,47 @@
 // app/api/submit/route.ts
-
-/**
- * Forzar ejecución en Node.js y deshabilitar el bodyParser
- */
-export const runtime = "nodejs";
-export const config = {
-  api: { bodyParser: false },
-};
-
-import type { IncomingMessage } from "http";
 import { NextRequest, NextResponse } from "next/server";
 import formidable from "formidable";
 import fs from "fs/promises";
-import { put } from "@vercel/blob";
+import { put, PutCommandOptions } from "@vercel/blob";
 import { Redis } from "@upstash/redis";
 
-// Inicializa el cliente Redis leyendo variables de entorno
+export const config = { api: { bodyParser: false } };
+
+// Inicializa Redis leyendo UPSTASH_REDIS_REST_URL y UPSTASH_REDIS_REST_TOKEN
 const redis = Redis.fromEnv();
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    // 1) Configura formidable
+    // 1) Parsear el formulario multipart
     const form = formidable({ multiples: true });
+    // Forzamos a `any` para evitar incompatibilidades TS
+    const { fields, files }: { fields: Record<string, any>; files: Record<string, any> } =
+      await new Promise((resolve, reject) => {
+        form.parse(req as any, (err, flds, fls) =>
+          err ? reject(err) : resolve({ fields: flds, files: fls })
+        );
+      });
 
-    // 2) Parseo en promise tipada
-    const { fields, files } = await new Promise<{
-      fields: formidable.Fields;
-      files: formidable.Files;
-    }>((resolve, reject) => {
-      form.parse(
-        request as unknown as IncomingMessage,
-        (err, flds, fls) => (err ? reject(err) : resolve({ fields: flds, files: fls }))
-      );
-    });
-
-    // 3) Subir archivos a Blob
+    // 2) Subir archivos a Blob
     const uploads: { name: string; url: string }[] = [];
-    for (const key in files) {
-      const fileOrArr = files[key];
-      const file = Array.isArray(fileOrArr) ? fileOrArr[0] : fileOrArr;
+    for (const key of Object.keys(files)) {
+      const fileEntry = files[key];
+      const file = Array.isArray(fileEntry) ? fileEntry[0] : fileEntry;
       if (!file) continue;
-
-      const buffer = await fs.readFile(file.filepath);
-      const blob = await put(
-        `tmp/${Date.now()}-${file.originalFilename}`,
-        buffer,
-        { access: "public" }
-      );
+      const data = await fs.readFile(file.filepath);
+      // El SDK de @vercel/blob sólo admite access: "public"
+      const options: PutCommandOptions = { access: "public" };
+      const blob = await put(`tmp/${Date.now()}-${file.originalFilename}`, data, options);
       uploads.push({ name: file.originalFilename ?? key, url: blob.url });
     }
 
-    // 4) Encolar en Redis
-    await redis.lpush(
-      "checklist-queue",
-      JSON.stringify({ fields, uploads, ts: Date.now() })
-    );
+    // 3) Encolar TODO en Redis como un único JSON string
+    const payload = JSON.stringify({ ts: Date.now(), fields, uploads });
+    await redis.lpush("checklist-queue", payload);
 
     return NextResponse.json({ ok: true }, { status: 202 });
-  } catch (error) {
-    console.error("submit error", error);
+  } catch (err) {
+    console.error("Error en /api/submit:", err);
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
