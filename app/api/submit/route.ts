@@ -3,48 +3,49 @@ import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { Redis } from "@upstash/redis";
 
-// 1) Deshabilitamos sólo el bodyParser nativo de Next.js
 export const config = { api: { bodyParser: false } };
-// (opcional en la 15.3.2 suele funcionar sin)
-// export const runtime = "nodejs";
-
 const redis = Redis.fromEnv();
 
 export async function POST(request: Request) {
   try {
-    // 2) Parse multipart con Web API
+    // 1) Parse multipart con Web API
     const formData = await request.formData();
 
-    // 3) Extraemos campos de texto
+    // 2) Extraemos campos de texto
     const fields: Record<string, string> = {};
     for (const [key, value] of formData.entries()) {
-      if (typeof value === "string") fields[key] = value;
+      if (typeof value === "string") {
+        fields[key] = value;
+      }
     }
 
-    // 4) Subimos archivos con @vercel/blob
+    // 3) Subimos archivos a Blob
     const uploads: { name: string; url: string }[] = [];
-    for (const file of formData.getAll("files")) {
-      if (!(file instanceof File)) continue;
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const blob = await put(
-        `tmp/${Date.now()}-${file.name}`,
-        buffer,
-        { access: "public" }
-      );
-      uploads.push({ name: file.name, url: blob.url });
+    for (const entry of formData.getAll("files")) {
+      if (entry instanceof File) {
+        const arrayBuffer = await entry.arrayBuffer();
+        // @vercel/blob acepta ArrayBuffer directamente
+        const blob = await put(
+          `tmp/${Date.now()}-${entry.name}`,
+          arrayBuffer,
+          { access: "public" }
+        );
+        uploads.push({ name: entry.name, url: blob.url });
+      }
     }
 
-    // 5) Push a la cola Redis
+    // 4) Push a la cola Redis
     await redis.lpush(
       "checklist-queue",
       JSON.stringify({ fields, uploads, ts: Date.now() })
     );
 
     return NextResponse.json({ ok: true }, { status: 202 });
-  } catch (err: any) {
-    console.error("submit error", err);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("submit error", message);
     return NextResponse.json(
-      { ok: false, error: err.message || String(err) },
+      { ok: false, error: message },
       { status: 500 }
     );
   }
