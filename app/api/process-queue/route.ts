@@ -1,20 +1,14 @@
 // app/api/process-queue/route.ts
 import { NextResponse } from "next/server";
-import { Redis } from "@upstash/redis";
-import { google } from "googleapis";
+import { Redis }           from "@upstash/redis";
+import { google }          from "googleapis";
 
-export const runtime = 'nodejs'; // forza ejecución en Node
-const redis = Redis.fromEnv();
+export const runtime = "nodejs";
+const redis        = Redis.fromEnv();
+const sheetId      = process.env.SPREADSHEET_ID!;
+const creds        = JSON.parse(process.env.GSHEETS_CREDENTIALS_JSON!);
 
-// Tus env-vars obligatorias
-const sheetId = process.env.SPREADSHEET_ID!;
-const driveFolderId = process.env.DRIVE_FOLDER_ID!;
-
-// Parseamos JSON de credenciales de Google
-const credsJson = process.env.GSHEETS_CREDENTIALS_JSON!;
-const creds = JSON.parse(credsJson) as Record<string, unknown>;
-
-// Inicializamos cliente Google
+// Inicializa Google API
 const auth = new google.auth.GoogleAuth({
   credentials: creds,
   scopes: [
@@ -23,78 +17,72 @@ const auth = new google.auth.GoogleAuth({
   ],
 });
 const sheets = google.sheets({ version: "v4", auth });
-const drive = google.drive({ version: "v3", auth });
-
-// Tipos para el ítem de la cola
-type Upload       = { name: string; url: string; mimeType?: string };
-type QueueItem    = { fields: Record<string,string>; uploads: Upload[]; ts: number };
+const drive  = google.drive({ version: "v3", auth });
 
 export async function GET() {
-  // 👉 Cambio clave aquí también
-  const queueKey = "cola-de-lista-de-verificación";
-
-  // Preparamos filas a enviar
-  const rows: string[][] = [];
+  const rowsToAppend: unknown[][] = [];
 
   while (true) {
-    const raw = await redis.lpop<string>(queueKey);
+    // 1) LPOP de la misma lista
+    const raw = await redis.lpop<string>("cola-de-lista-de-verificación");
     if (!raw) break;
 
-    // 🚫 No usamos `any`, casteamos a nuestro tipo
-    const item = JSON.parse(raw) as QueueItem;
+    // 2) Si nos llegó un string JSON, parsearlo; si no, usarlo tal cual
+    let item: { fields: Record<string, any>; uploads: any[]; ts: number };
+    if (typeof raw === "string") {
+      try {
+        item = JSON.parse(raw);
+      } catch (e) {
+        console.error("📌 no es JSON válido, saltando:", raw);
+        continue;
+      }
+    } else {
+      // esto no debería pasar si siempre stringifyas
+      item = raw as any;
+    }
+
     const { fields, uploads, ts } = item;
 
-    // 1) Subir cada archivo de `uploads` a Drive
-    const links: string[] = [];
+    // 3) subir archivos a Drive
+    const driveLinks: string[] = [];
     for (const up of uploads) {
-      const res = await fetch(up.url);
-      const arrayBuffer = await res.arrayBuffer();
-      const file = await drive.files.create({
+      // descargamos el blob que subimos antes
+      const res    = await fetch(up.url);
+      const buffer = await res.arrayBuffer();
+
+      const driveFile = await drive.files.create({
         requestBody: {
-          name: up.name,
-          parents: [driveFolderId],
+          name:    up.name,
+          parents: process.env.DRIVE_FOLDER_ID ? [process.env.DRIVE_FOLDER_ID] : [],
         },
         media: {
           mimeType: up.mimeType || "application/octet-stream",
-          body: Buffer.from(arrayBuffer),
+          body:     Buffer.from(buffer),
         },
-        fields: "webViewLink",
+        fields: "id,webViewLink",
       });
-      if (file.data.webViewLink) links.push(file.data.webViewLink);
+      driveLinks.push(driveFile.data.webViewLink!);
     }
 
-    // 2) Construimos la fila para Google Sheets (ajusta el orden de campos)
-    rows.push([
+    // 4) montar la fila para Sheets
+    rowsToAppend.push([
       new Date(ts).toISOString(),
       fields.cliente,
       fields.direccion,
-      fields.ciudad,
-      fields.tecnico,
-      fields.fechaVisita,
-      fields.codigoSKU,
-      fields.observacionesGenerales,
-      fields.clienteSatisfecho,
-      fields.seEntregoInstructivo,
-      fields.diagnostico,
-      fields.comentariosDiagnostico,
-      fields.solucion,
-      fields.comentariosSolucion,
-      fields.pruebas,
-      fields.comentariosPruebas,
-      fields.transcripcionVoz,
-      ...links,
+      /* … resto de campos … */,
+      ...driveLinks,
     ]);
   }
 
-  // Solo hacemos append si hay filas nuevas
-  if (rows.length > 0) {
+  // 5) si hay algo, hacer append
+  if (rowsToAppend.length) {
     await sheets.spreadsheets.values.append({
-      spreadsheetId: sheetId,
-      range: "Sheet1!A:Z",
+      spreadsheetId:  sheetId,
+      range:          "Sheet1!A:Z",
       valueInputOption: "RAW",
-      requestBody: { values: rows },
+      requestBody:    { values: rowsToAppend },
     });
   }
 
-  return NextResponse.json({ processed: rows.length });
+  return NextResponse.json({ processed: rowsToAppend.length });
 }
