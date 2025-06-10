@@ -3,17 +3,15 @@ import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { google } from "googleapis";
 
-export const runtime = "nodejs";
+export const runtime = "nodejs";          // Next.js 13+ exige 'nodejs', no 'node'
 const redis = Redis.fromEnv();
+const QUEUE_KEY = "lista-de-verificación-cola";
 
-// Env vars
-const SHEET_ID     = process.env.SPREADSHEET_ID!;
-const DRIVE_FOLDER = process.env.DRIVE_FOLDER_ID!;
-const credsJson    = process.env.GSHEETS_CREDENTIALS_JSON!;
+const sheetId = process.env.SPREADSHEET_ID!;
+const creds = JSON.parse(process.env.GSHEETS_CREDENTIALS_JSON!);
 
-// Configuración Google
-const creds = JSON.parse(credsJson) as Record<string, unknown>;
-const auth  = new google.auth.GoogleAuth({
+// Autenticación con Google
+const auth = new google.auth.GoogleAuth({
   credentials: creds,
   scopes: [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -21,64 +19,77 @@ const auth  = new google.auth.GoogleAuth({
   ],
 });
 const sheets = google.sheets({ version: "v4", auth });
-const drive  = google.drive({ version: "v3", auth });
-
-// Tipo del ítem en cola
-interface QueueItem {
-  fields: Record<string, string>;
-  uploads: Array<{ name: string; url: string; mimeType: string }>;
-  ts: number;
-}
+const drive = google.drive({ version: "v3", auth });
 
 export async function GET() {
-  const rows: string[][] = [];
-  const KEY = "lista-de-verificación-cola";
+  const rowsToAppend: any[][] = [];
 
-  // 1) Extraemos hasta vaciar
   while (true) {
-    const raw = await redis.lpop<string>(KEY);
+    // 1) Sacamos un elemento de la cola
+    const raw = await redis.lpop<string>(QUEUE_KEY);
     if (!raw) break;
 
-    let item: QueueItem;
+    // 2) Parseamos JSON… si falla, lo saltamos
+    let item: { fields: any; uploads: any[]; ts: number };
     try {
-      item = JSON.parse(raw) as QueueItem;
+      item = JSON.parse(raw);
     } catch {
       console.warn("Invalid JSON, skipping:", raw);
       continue;
     }
 
-    // 2) Subir archivos a Drive
-    const links: string[] = [];
-    for (const up of item.uploads) {
-      const res    = await fetch(up.url);
+    const { fields, uploads, ts } = item;
+
+    // 3) Subimos cada upload a Drive y guardamos el enlace
+    const driveLinks: string[] = [];
+    for (const up of uploads) {
+      const res = await fetch(up.url);
       const buffer = await res.arrayBuffer();
-      const file   = await drive.files.create({
-        requestBody: { name: up.name, parents: [DRIVE_FOLDER] },
-        media:       { mimeType: up.mimeType, body: Buffer.from(buffer) },
-        fields:      "webViewLink",
+      const file = await drive.files.create({
+        requestBody: {
+          name: up.name,
+          parents: process.env.DRIVE_FOLDER_ID
+            ? [process.env.DRIVE_FOLDER_ID]
+            : [],
+        },
+        media: {
+          mimeType: up.mimeType || "application/octet-stream",
+          body: Buffer.from(buffer),
+        },
+        fields: "webViewLink",
       });
-      if (file.data.webViewLink) {
-        links.push(file.data.webViewLink);
-      }
+      driveLinks.push(file.data.webViewLink!);
     }
 
-    // 3) Construir fila con timestamp, campos y enlaces
-    rows.push([
-      new Date(item.ts).toISOString(),
-      ...Object.values(item.fields),
-      ...links,
+    // 4) Construimos la fila que vamos a añadir a Sheets
+    rowsToAppend.push([
+      new Date(ts).toISOString(),
+      fields.cliente,
+      fields.direccion,
+      fields.ciudad,
+      fields.tecnico,
+      fields.fechaVisita,
+      fields.codigoSKU,
+      fields.observacionesGenerales,
+      fields.clienteSatisfecho,
+      fields.seEntregoInstructivo,
+      fields.comentariosDiagnostico,
+      fields.comentariosSolucion,
+      fields.comentariosPruebas,
+      fields.transcripcionVoz,
+      ...driveLinks,
     ]);
   }
 
-  // 4) Enviar a Google Sheets si hay filas
-  if (rows.length > 0) {
+  // 5) Si hay filas nuevas, las añadimos de golpe
+  if (rowsToAppend.length > 0) {
     await sheets.spreadsheets.values.append({
-      spreadsheetId:   SHEET_ID,
-      range:           "Sheet1!A:Z",
-      valueInputOption:"RAW",
-      requestBody:     { values: rows },
+      spreadsheetId: sheetId,
+      range: "Sheet1!A:Z",
+      valueInputOption: "RAW",
+      requestBody: { values: rowsToAppend },
     });
   }
 
-  return NextResponse.json({ processed: rows.length });
+  return NextResponse.json({ processed: rowsToAppend.length });
 }
