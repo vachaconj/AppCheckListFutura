@@ -3,18 +3,17 @@ import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { google } from "googleapis";
 
-// 1) Next.js 13+ exige "nodejs" como runtime para usar Buffer y googleapis
+// 1) Forzamos Node.js para poder usar Buffer y googleapis
 export const runtime = "nodejs";
 
-// 2) Instanciamos Redis con tus env-vars
+// 2) Instanciamos Redis usando tus variables de entorno
 const redis = Redis.fromEnv();
 const QUEUE_KEY = "lista-de-verificación-cola";
 
-// 3) Tus env-vars de Sheets & Drive
+// 3) Configuraciones de Google Sheets & Drive
 const sheetId = process.env.SPREADSHEET_ID!;
 const creds = JSON.parse(process.env.GSHEETS_CREDENTIALS_JSON!);
 
-// 4) Configuración de cliente Google
 const auth = new google.auth.GoogleAuth({
   credentials: creds,
   scopes: [
@@ -25,7 +24,7 @@ const auth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: "v4", auth });
 const drive = google.drive({ version: "v3", auth });
 
-// 5) Tipos claros para lo que hay en tu cola
+// 4) Tipado estricto de la cola
 type Upload = { name: string; url: string; mimeType: string };
 type QueueItem = {
   fields: Record<string, string>;
@@ -33,33 +32,30 @@ type QueueItem = {
   ts: number;
 };
 
-// 6) El handler GET que vacía la cola y escribe en Sheet
 export async function GET() {
-  // Guardia de tipos: fila = lista de celdas string|number
   const rowsToAppend: (string | number)[][] = [];
 
+  // 5) Vaciamos la cola
   while (true) {
-    // 6.1) Sacamos un string de Redis
     const raw = await redis.lpop<string>(QUEUE_KEY);
     if (!raw) break;
 
-    // 6.2) Parseamos y validamos
     let item: QueueItem;
     try {
       item = JSON.parse(raw) as QueueItem;
-    } catch (err) {
-      console.warn("Invalid JSON, skipping:", raw);
+    } catch {
+      // JSON inválido, lo saltamos
       continue;
     }
 
     const { fields, uploads, ts } = item;
 
-    // 6.3) Subimos cada fichero a Drive
-    const links: string[] = [];
+    // 6) Subimos ficheros a Drive
+    const driveLinks: string[] = [];
     for (const up of uploads) {
       const res = await fetch(up.url);
       const buffer = await res.arrayBuffer();
-      const driveFile = await drive.files.create({
+      const file = await drive.files.create({
         requestBody: {
           name: up.name,
           parents: process.env.DRIVE_FOLDER_ID
@@ -72,10 +68,10 @@ export async function GET() {
         },
         fields: "webViewLink",
       });
-      links.push(driveFile.data.webViewLink!);
+      driveLinks.push(file.data.webViewLink!);
     }
 
-    // 6.4) Construimos la fila con campos + enlaces
+    // 7) Preparamos la fila para Google Sheets
     rowsToAppend.push([
       new Date(ts).toISOString(),
       fields.cliente,
@@ -91,11 +87,11 @@ export async function GET() {
       fields.comentariosSolucion,
       fields.comentariosPruebas,
       fields.transcripcionVoz,
-      ...links,
+      ...driveLinks,
     ]);
   }
 
-  // 7) Si hay filas, las escribimos todas de golpe
+  // 8) Si hay filas, las escribimos
   if (rowsToAppend.length > 0) {
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
