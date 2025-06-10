@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     // 1) Parse multipart con Web API
     const formData = await request.formData();
 
-    // 2) Extraemos campos de texto
+    // 2) Extraemos solo los campos de texto
     const fields: Record<string, string> = {};
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string") {
@@ -19,12 +19,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3) Subimos archivos a Blob
+    // 3) Subimos todos los archivos con el campo "files"
     const uploads: { name: string; url: string }[] = [];
     for (const entry of formData.getAll("files")) {
       if (entry instanceof File) {
         const arrayBuffer = await entry.arrayBuffer();
-        // @vercel/blob acepta ArrayBuffer directamente
         const blob = await put(
           `tmp/${Date.now()}-${entry.name}`,
           arrayBuffer,
@@ -34,11 +33,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // submit/route.ts
-await redis.lpush(
-  "cola-de-lista-de-verificación",
-  JSON.stringify({ fields, uploads, ts: Date.now() })
-);
+    // 4) Empujamos a la cola Upstash Redis
+    await redis.lpush(
+      "cola-de-lista-de-verificación",
+      JSON.stringify({ fields, uploads, ts: Date.now() })
+    );
+
     return NextResponse.json({ ok: true }, { status: 202 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
