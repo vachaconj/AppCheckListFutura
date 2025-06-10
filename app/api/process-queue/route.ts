@@ -1,14 +1,17 @@
 // app/api/process-queue/route.ts
 import { NextResponse } from "next/server";
-import { Redis }           from "@upstash/redis";
-import { google }          from "googleapis";
+import { Redis } from "@upstash/redis";
+import { google } from "googleapis";
 
-export const runtime = "nodejs";
-const redis        = Redis.fromEnv();
-const sheetId      = process.env.SPREADSHEET_ID!;
-const creds        = JSON.parse(process.env.GSHEETS_CREDENTIALS_JSON!);
+export const runtime = "node"; // para aseguranos de usar Node
 
-// Inicializa Google API
+// 1) Cargamos Redis y env-vars
+const redis = Redis.fromEnv();
+const sheetId = process.env.SPREADSHEET_ID!;
+const driveFolderId = process.env.DRIVE_FOLDER_ID!;
+const creds = JSON.parse(process.env.GSHEETS_CREDENTIALS_JSON!);
+
+// 2) Autenticación Google
 const auth = new google.auth.GoogleAuth({
   credentials: creds,
   scopes: [
@@ -20,70 +23,63 @@ const sheets = google.sheets({ version: "v4", auth });
 const drive  = google.drive({ version: "v3", auth });
 
 export async function GET() {
-  const rowsToAppend: unknown[][] = [];
+  const rowsToAppend: string[][] = [];
 
+  // 3) Sacamos todo de la cola
   while (true) {
-    // 1) LPOP de la misma lista
     const raw = await redis.lpop<string>("cola-de-lista-de-verificación");
     if (!raw) break;
 
-    // 2) Si nos llegó un string JSON, parsearlo; si no, usarlo tal cual
-    let item: { fields: Record<string, any>; uploads: any[]; ts: number };
-    if (typeof raw === "string") {
-      try {
-        item = JSON.parse(raw);
-      } catch (e) {
-        console.error("📌 no es JSON válido, saltando:", raw);
-        continue;
-      }
-    } else {
-      // esto no debería pasar si siempre stringifyas
-      item = raw as any;
+    let item: {
+      fields: Record<string, string>;
+      uploads: { name: string; url: string }[];
+      ts: number;
+    };
+    try {
+      item = JSON.parse(raw);
+    } catch {
+      console.error("Invalid JSON in queue:", raw);
+      continue;
     }
 
-    const { fields, uploads, ts } = item;
-
-    // 3) subir archivos a Drive
+    // 4) Subir uploads a Drive y recolectar enlaces
     const driveLinks: string[] = [];
-    for (const up of uploads) {
-      // descargamos el blob que subimos antes
-      const res    = await fetch(up.url);
+    for (const up of item.uploads) {
+      const res = await fetch(up.url);
       const buffer = await res.arrayBuffer();
-
       const driveFile = await drive.files.create({
         requestBody: {
-          name:    up.name,
-          parents: process.env.DRIVE_FOLDER_ID ? [process.env.DRIVE_FOLDER_ID] : [],
+          name: up.name,
+          parents: [driveFolderId],
         },
         media: {
-          mimeType: up.mimeType || "application/octet-stream",
-          body:     Buffer.from(buffer),
+          mimeType: up.name.includes('.') 
+            ? undefined 
+            : 'application/octet-stream',
+          body: Buffer.from(buffer),
         },
-        fields: "id,webViewLink",
+        fields: "webViewLink",
       });
-      driveLinks.push(driveFile.data.webViewLink!);
+      driveLinks.push(driveFile.data.webViewLink || "");
     }
 
-    // 4) montar la fila para Sheets
+    // 5) Preparamos la fila: fecha ISO + todos los fields + enlaces
     rowsToAppend.push([
-      new Date(ts).toISOString(),
-      fields.cliente,
-      fields.direccion,
-      /* … resto de campos … */,
+      new Date(item.ts).toISOString(),
+      ...Object.values(item.fields),
       ...driveLinks,
     ]);
   }
 
-  // 5) si hay algo, hacer append
+  // 6) Si hay algo, lo escribimos en la hoja
   if (rowsToAppend.length) {
     await sheets.spreadsheets.values.append({
-      spreadsheetId:  sheetId,
-      range:          "Sheet1!A:Z",
+      spreadsheetId: sheetId,
+      range: "Sheet1!A:Z",
       valueInputOption: "RAW",
-      requestBody:    { values: rowsToAppend },
+      requestBody: { values: rowsToAppend },
     });
   }
 
   return NextResponse.json({ processed: rowsToAppend.length });
 }
-
