@@ -6,12 +6,15 @@ import { Redis } from "@upstash/redis";
 export const config = { api: { bodyParser: false } };
 const redis = Redis.fromEnv();
 
+// Tipo para los archivos que subimos a Blob
+type Upload = { name: string; url: string };
+
 export async function POST(request: Request) {
   try {
-    // 1) Parse multipart/form-data
+    // 1) Parseamos el multipart con la Web API
     const formData = await request.formData();
 
-    // 2) Extraer campos de texto
+    // 2) Extraemos todos los campos de texto
     const fields: Record<string, string> = {};
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string") {
@@ -19,35 +22,35 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3) Subir archivos a Blob
-    const uploads: { name: string; url: string; mimeType?: string }[] = [];
-    // Ajusta "files" al name de tus inputs de archivo
-    for (const entry of formData.getAll("files")) {
+    // 3) Subimos cada archivo bajo la clave "files"
+    const uploads: Upload[] = [];
+    const files = formData.getAll("files");
+    for (const entry of files) {
       if (entry instanceof File) {
-        const arrayBuffer = await entry.arrayBuffer();
+        const buffer = await entry.arrayBuffer();
         const blob = await put(
           `tmp/${Date.now()}-${entry.name}`,
-          arrayBuffer,
-          { access: "public" } // o "private" si prefieres
+          buffer,
+          { access: "public" } // o "private" si lo prefieres
         );
-        uploads.push({ name: entry.name, url: blob.url, mimeType: entry.type });
+        uploads.push({ name: entry.name, url: blob.url });
       }
     }
 
-    // 4) Empujar a la cola en Redis usando JSON válido
-    const payload = { fields, uploads, ts: Date.now() };
+    // 4) Pusheamos a la misma lista que procesa el consumidor
     await redis.lpush(
-      "lista-de-verificación-cola",
-      JSON.stringify(payload)
+      "cola-de-lista-de-verificación",
+      JSON.stringify({
+        fields,
+        uploads,
+        ts: Date.now(),
+      })
     );
 
     return NextResponse.json({ ok: true }, { status: 202 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("submit error", message);
-    return NextResponse.json(
-      { ok: false, error: message },
-      { status: 500 }
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("submit error", msg);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

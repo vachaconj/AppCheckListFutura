@@ -3,12 +3,18 @@ import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { google } from "googleapis";
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs'; // forza ejecución en Node
 const redis = Redis.fromEnv();
 
+// Tus env-vars obligatorias
 const sheetId = process.env.SPREADSHEET_ID!;
-const creds = JSON.parse(process.env.GSHEETS_CREDENTIALS_JSON!);
+const driveFolderId = process.env.DRIVE_FOLDER_ID!;
 
+// Parseamos JSON de credenciales de Google
+const credsJson = process.env.GSHEETS_CREDENTIALS_JSON!;
+const creds = JSON.parse(credsJson) as Record<string, unknown>;
+
+// Inicializamos cliente Google
 const auth = new google.auth.GoogleAuth({
   credentials: creds,
   scopes: [
@@ -17,51 +23,47 @@ const auth = new google.auth.GoogleAuth({
   ],
 });
 const sheets = google.sheets({ version: "v4", auth });
-const drive  = google.drive({ version: "v3", auth });
+const drive = google.drive({ version: "v3", auth });
+
+// Tipos para el ítem de la cola
+type Upload       = { name: string; url: string; mimeType?: string };
+type QueueItem    = { fields: Record<string,string>; uploads: Upload[]; ts: number };
 
 export async function GET() {
-  const rows: any[][] = [];
+  // 👉 Cambio clave aquí también
+  const queueKey = "cola-de-lista-de-verificación";
 
-  // 1) Vaciar la cola
+  // Preparamos filas a enviar
+  const rows: string[][] = [];
+
   while (true) {
-    const raw = await redis.lpop<string>("lista-de-verificación-cola");
+    const raw = await redis.lpop<string>(queueKey);
     if (!raw) break;
 
-    // 2) Parse seguro
-    let item: {
-      fields: Record<string, string>;
-      uploads: { name: string; url: string; mimeType?: string }[];
-      ts: number;
-    };
-    try {
-      item = JSON.parse(raw);
-    } catch {
-      console.warn("Skipping invalid queue entry:", raw);
-      continue;
-    }
-
+    // 🚫 No usamos `any`, casteamos a nuestro tipo
+    const item = JSON.parse(raw) as QueueItem;
     const { fields, uploads, ts } = item;
 
-    // 3) Subir cada archivo a Drive y recoger enlaces
-    const driveLinks: string[] = [];
+    // 1) Subir cada archivo de `uploads` a Drive
+    const links: string[] = [];
     for (const up of uploads) {
       const res = await fetch(up.url);
-      const buffer = await res.arrayBuffer();
-      const driveFile = await drive.files.create({
+      const arrayBuffer = await res.arrayBuffer();
+      const file = await drive.files.create({
         requestBody: {
           name: up.name,
-          parents: process.env.DRIVE_FOLDER_ID ? [process.env.DRIVE_FOLDER_ID] : [],
+          parents: [driveFolderId],
         },
         media: {
           mimeType: up.mimeType || "application/octet-stream",
-          body: Buffer.from(buffer),
+          body: Buffer.from(arrayBuffer),
         },
-        fields: "id,webViewLink",
+        fields: "webViewLink",
       });
-      driveLinks.push(driveFile.data.webViewLink!);
+      if (file.data.webViewLink) links.push(file.data.webViewLink);
     }
 
-    // 4) Preparar fila para Sheets
+    // 2) Construimos la fila para Google Sheets (ajusta el orden de campos)
     rows.push([
       new Date(ts).toISOString(),
       fields.cliente,
@@ -80,11 +82,11 @@ export async function GET() {
       fields.pruebas,
       fields.comentariosPruebas,
       fields.transcripcionVoz,
-      ...driveLinks,
+      ...links,
     ]);
   }
 
-  // 5) Si hay filas, anexarlas a la hoja
+  // Solo hacemos append si hay filas nuevas
   if (rows.length > 0) {
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
