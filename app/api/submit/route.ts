@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     // 4) Encolamos en Redis bajo la misma llave
     const payload = { fields, uploads, ts: Date.now() };
     await redis.lpush(
-      "cola-de-lista-de-verificación",
+      "lista-de-verificación-cola",
       JSON.stringify(payload)
     );
 

@@ -32,7 +32,7 @@ interface QueueItem {
 
 export async function GET() {
   const rows: string[][] = [];
-  const KEY = "cola-de-lista-de-verificación";
+  const KEY = "lista-de-verificación-cola";
 
   // 1) Extraemos hasta vaciar
   while (true) {
