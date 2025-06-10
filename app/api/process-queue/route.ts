@@ -38,7 +38,7 @@ export async function GET() {
 
   // 7) Extraer hasta vaciar la cola
   while (true) {
-    const raw = await redis.lpop<string>('lista de verificación-cola')
+    const raw = await redis.lpop<string>("cola-de-lista-de-verificación")
     if (!raw) break
 
     const { fields, uploads, ts } = JSON.parse(raw) as QueueItem

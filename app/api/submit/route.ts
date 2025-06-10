@@ -34,12 +34,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // 4) Push a la cola Redis
-    await redis.lpush(
-      "checklist-queue",
-      JSON.stringify({ fields, uploads, ts: Date.now() })
-    );
-
+    // submit/route.ts
+await redis.lpush(
+  "cola-de-lista-de-verificación",
+  JSON.stringify({ fields, uploads, ts: Date.now() })
+);
     return NextResponse.json({ ok: true }, { status: 202 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

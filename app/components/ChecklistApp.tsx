@@ -21,7 +21,6 @@ type FormState = {
   observacionesGenerales: string;
   clienteSatisfecho: boolean;
   seEntregoInstructivo: boolean;
-  // Cada sección almacena un array de opciones marcadas:
   diagnostico: string[];
   comentariosDiagnostico: string;
   archivosDiagnostico: FileList | null;
@@ -35,7 +34,6 @@ type FormState = {
 };
 
 export default function ChecklistApp() {
-  // 1) Estado inicial de todo el formulario
   const [form, setForm] = useState<FormState>({
     cliente: "",
     direccion: "",
@@ -58,7 +56,6 @@ export default function ChecklistApp() {
     transcripcionVoz: "",
   });
 
-  // 2) Listas de opciones estáticas
   const diagnosticoOpciones = [
     "No imprime negro / color faltante",
     "Cabezal se choca con material",
@@ -98,7 +95,6 @@ export default function ChecklistApp() {
     "Confirmación en software RIP",
   ];
 
-  // 3) Refs y lógica de reconocimiento de voz
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const isRecordingRef = useRef(false);
 
@@ -143,99 +139,27 @@ export default function ChecklistApp() {
     }
   };
 
-  // 4) Manejadores de cambio de archivos
   const handleFileChange = (
     field: "archivosDiagnostico" | "archivosSolucion" | "archivosPruebas",
     files: FileList | null
   ) => {
-    setForm((prev) => ({
-      ...prev,
-      [field]: files,
-    }));
+    setForm((prev) => ({ ...prev, [field]: files }));
   };
 
-  // 5) Manejador de envío del formulario (sin recargar página)
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     try {
-      // 5.1) Creamos un FormData
-      const formData = new FormData();
-
-      // 5.2) Campos simples de texto
-      formData.append("cliente", form.cliente);
-      formData.append("direccion", form.direccion);
-      formData.append("ciudad", form.ciudad);
-      formData.append("tecnico", form.tecnico);
-      formData.append("fechaVisita", form.fechaVisita);
-      formData.append("codigoSKU", form.codigoSKU);
-      formData.append("observacionesGenerales", form.observacionesGenerales);
-
-      // 5.3) Checkboxes booleanos
-      formData.append(
-        "clienteSatisfecho",
-        form.clienteSatisfecho ? "Sí" : "No"
-      );
-      formData.append(
-        "seEntregoInstructivo",
-        form.seEntregoInstructivo ? "Sí" : "No"
-      );
-
-      // 5.4) Opciones múltiples de Diagnóstico, Solución y Pruebas
-      form.diagnostico.forEach((opt) => {
-        formData.append("diagnostico", opt);
-      });
-      formData.append(
-        "comentariosDiagnostico",
-        form.comentariosDiagnostico
-      );
-      if (form.archivosDiagnostico) {
-        for (let i = 0; i < form.archivosDiagnostico.length; i++) {
-          const file = form.archivosDiagnostico[i];
-          formData.append("diagnosticoFiles", file, file.name);
-        }
-      }
-
-      form.solucion.forEach((opt) => {
-        formData.append("solucion", opt);
-      });
-      formData.append("comentariosSolucion", form.comentariosSolucion);
-      if (form.archivosSolucion) {
-        for (let i = 0; i < form.archivosSolucion.length; i++) {
-          const file = form.archivosSolucion[i];
-          formData.append("solucionFiles", file, file.name);
-        }
-      }
-
-      form.pruebas.forEach((opt) => {
-        formData.append("pruebas", opt);
-      });
-      formData.append("comentariosPruebas", form.comentariosPruebas);
-      if (form.archivosPruebas) {
-        for (let i = 0; i < form.archivosPruebas.length; i++) {
-          const file = form.archivosPruebas[i];
-          formData.append("pruebasFiles", file, file.name);
-        }
-      }
-
-      // 5.5) Transcripción de voz a texto
-      formData.append("transcripcionVoz", form.transcripcionVoz);
-
-      // 5.6) Enviamos el POST a /api/submit
-      const response = await fetch("/api/submit", {
+      const formData = new FormData(e.currentTarget);
+      const res = await fetch("/api/submit", {
         method: "POST",
         body: formData,
       });
-
-      // 5.7) Comprobamos la respuesta
-      if (!response.ok) {
-        const errorJson = await response.json();
-        alert("Error al enviar: " + (errorJson.error || "desconocido"));
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Error al enviar: " + (err.error || res.status));
         return;
       }
-
       alert("¡Formulario enviado correctamente!");
-      // 5.8) Opcional: reiniciar el estado del formulario
       setForm({
         cliente: "",
         direccion: "",
@@ -270,8 +194,12 @@ export default function ChecklistApp() {
           Checklist de Visita Técnica
         </h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* 1. Cliente */}
+        <form
+          onSubmit={handleSubmit}
+          encType="multipart/form-data"
+          className="space-y-6"
+        >
+          {/* Cliente */}
           <div>
             <Label htmlFor="cliente" className="block font-medium mb-1">
               Cliente
@@ -283,13 +211,13 @@ export default function ChecklistApp() {
               placeholder="Nombre del cliente"
               value={form.cliente}
               onChange={(e) =>
-                setForm({ ...form, cliente: e.target.value })
+                setForm((prev) => ({ ...prev, cliente: e.target.value }))
               }
               required
             />
           </div>
 
-          {/* 2. Dirección */}
+          {/* Dirección */}
           <div>
             <Label htmlFor="direccion" className="block font-medium mb-1">
               Dirección
@@ -301,13 +229,13 @@ export default function ChecklistApp() {
               placeholder="Av. ejemplo 123"
               value={form.direccion}
               onChange={(e) =>
-                setForm({ ...form, direccion: e.target.value })
+                setForm((prev) => ({ ...prev, direccion: e.target.value }))
               }
               required
             />
           </div>
 
-          {/* 3. Ciudad */}
+          {/* Ciudad */}
           <div>
             <Label htmlFor="ciudad" className="block font-medium mb-1">
               Ciudad
@@ -318,12 +246,14 @@ export default function ChecklistApp() {
               type="text"
               placeholder="Lima"
               value={form.ciudad}
-              onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, ciudad: e.target.value }))
+              }
               required
             />
           </div>
 
-          {/* 4. Técnico */}
+          {/* Técnico */}
           <div>
             <Label htmlFor="tecnico" className="block font-medium mb-1">
               Técnico
@@ -335,13 +265,13 @@ export default function ChecklistApp() {
               placeholder="Nombre del técnico"
               value={form.tecnico}
               onChange={(e) =>
-                setForm({ ...form, tecnico: e.target.value })
+                setForm((prev) => ({ ...prev, tecnico: e.target.value }))
               }
               required
             />
           </div>
 
-          {/* 5. Fecha de visita */}
+          {/* Fecha de visita */}
           <div>
             <Label htmlFor="fechaVisita" className="block font-medium mb-1">
               Fecha de visita
@@ -352,13 +282,13 @@ export default function ChecklistApp() {
               type="date"
               value={form.fechaVisita}
               onChange={(e) =>
-                setForm({ ...form, fechaVisita: e.target.value })
+                setForm((prev) => ({ ...prev, fechaVisita: e.target.value }))
               }
               required
             />
           </div>
 
-          {/* 6. Código SKU */}
+          {/* Código SKU */}
           <div>
             <Label htmlFor="codigoSKU" className="block font-medium mb-1">
               Código SKU
@@ -370,7 +300,7 @@ export default function ChecklistApp() {
               placeholder="Buscar SKU..."
               value={form.codigoSKU}
               onChange={(e) =>
-                setForm({ ...form, codigoSKU: e.target.value })
+                setForm((prev) => ({ ...prev, codigoSKU: e.target.value }))
               }
               list="sku-options"
               required
@@ -382,7 +312,7 @@ export default function ChecklistApp() {
             </datalist>
           </div>
 
-          {/* 7. Observaciones generales */}
+          {/* Observaciones generales */}
           <div>
             <Label
               htmlFor="observacionesGenerales"
@@ -396,33 +326,42 @@ export default function ChecklistApp() {
               placeholder="Anota aquí cualquier comentario general"
               value={form.observacionesGenerales}
               onChange={(e) =>
-                setForm({ ...form, observacionesGenerales: e.target.value })
+                setForm((prev) => ({
+                  ...prev,
+                  observacionesGenerales: e.target.value,
+                }))
               }
               rows={3}
             />
           </div>
 
-          {/* 8. Cliente satisfecho */}
+          {/* Cliente satisfecho */}
           <div className="flex items-center space-x-2">
             <Checkbox
               id="clienteSatisfecho"
               name="clienteSatisfecho"
               checked={form.clienteSatisfecho}
-              onCheckedChange={(v: boolean) =>
-                setForm({ ...form, clienteSatisfecho: v })
+              onCheckedChange={(v) =>
+                setForm((prev) => ({
+                  ...prev,
+                  clienteSatisfecho: v === true,
+                }))
               }
             />
             <Label htmlFor="clienteSatisfecho">Cliente satisfecho</Label>
           </div>
 
-          {/* 9. Se entregó instructivo */}
+          {/* Se entregó instructivo */}
           <div className="flex items-center space-x-2">
             <Checkbox
               id="seEntregoInstructivo"
               name="seEntregoInstructivo"
               checked={form.seEntregoInstructivo}
-              onCheckedChange={(v: boolean) =>
-                setForm({ ...form, seEntregoInstructivo: v })
+              onCheckedChange={(v) =>
+                setForm((prev) => ({
+                  ...prev,
+                  seEntregoInstructivo: v === true,
+                }))
               }
             />
             <Label htmlFor="seEntregoInstructivo">
@@ -432,7 +371,7 @@ export default function ChecklistApp() {
 
           <hr className="border-t my-4" />
 
-          {/* 10. Diagnóstico */}
+          {/* Diagnóstico */}
           <AccordionSection
             title="Diagnostico"
             options={diagnosticoOpciones}
@@ -455,7 +394,7 @@ export default function ChecklistApp() {
 
           <hr className="border-t my-4" />
 
-          {/* 11. Solución */}
+          {/* Solución */}
           <AccordionSection
             title="Solucion"
             options={solucionOpciones}
@@ -478,7 +417,7 @@ export default function ChecklistApp() {
 
           <hr className="border-t my-4" />
 
-          {/* 12. Pruebas */}
+          {/* Pruebas */}
           <AccordionSection
             title="Pruebas"
             options={pruebasOpciones}
@@ -501,9 +440,12 @@ export default function ChecklistApp() {
 
           <hr className="border-t my-4" />
 
-          {/* 13. Transcripción de voz a texto */}
+          {/* Transcripción de voz */}
           <div>
-            <Label htmlFor="transcripcionVoz" className="block font-medium mb-1">
+            <Label
+              htmlFor="transcripcionVoz"
+              className="block font-medium mb-1"
+            >
               Transcripción de voz a texto
             </Label>
             <Textarea
@@ -531,7 +473,7 @@ export default function ChecklistApp() {
 
           <hr className="border-t my-4" />
 
-          {/* 14. Botón de Envío */}
+          {/* Botón de Envío */}
           <div className="text-center">
             <Button type="submit" className="w-full">
               Enviar
@@ -542,4 +484,3 @@ export default function ChecklistApp() {
     </Card>
   );
 }
-
