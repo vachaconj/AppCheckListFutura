@@ -3,18 +3,12 @@ import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { google } from "googleapis";
 
-// 1) Ejecutar en Node.js para poder usar googleapis y Buffer
 export const runtime = "nodejs";
-
-// 2) Instanciar Redis desde las env-vars
 const redis = Redis.fromEnv();
 
-// 3) Leer las env-vars de Sheets/Drive
 const sheetId = process.env.SPREADSHEET_ID!;
-const driveFolderId = process.env.DRIVE_FOLDER_ID!;
 const creds = JSON.parse(process.env.GSHEETS_CREDENTIALS_JSON!);
 
-// 4) Autenticación de Google
 const auth = new google.auth.GoogleAuth({
   credentials: creds,
   scopes: [
@@ -23,76 +17,82 @@ const auth = new google.auth.GoogleAuth({
   ],
 });
 const sheets = google.sheets({ version: "v4", auth });
-const drive = google.drive({ version: "v3", auth });
+const drive  = google.drive({ version: "v3", auth });
 
 export async function GET() {
-  // ────────────────────────────────────────────────────────────
-  // ── Aquí está el any que te quejaba ESLint, lo silenciamos ──
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rowsToAppend: any[][] = [];
-  // ────────────────────────────────────────────────────────────
+  const rows: any[][] = [];
 
-  // 5) Sacar todos los items de la cola
+  // 1) Vaciar la cola
   while (true) {
-    const raw = await redis.lpop<string>("cola-de-lista-de-verificación");
+    const raw = await redis.lpop<string>("lista-de-verificación-cola");
     if (!raw) break;
 
-    const item = JSON.parse(raw) as {
+    // 2) Parse seguro
+    let item: {
       fields: Record<string, string>;
-      uploads: Array<{ name: string; url: string; mimeType?: string }>;
+      uploads: { name: string; url: string; mimeType?: string }[];
       ts: number;
     };
+    try {
+      item = JSON.parse(raw);
+    } catch {
+      console.warn("Skipping invalid queue entry:", raw);
+      continue;
+    }
 
-    // 6) Para cada archivo: descargar & subir a Drive
+    const { fields, uploads, ts } = item;
+
+    // 3) Subir cada archivo a Drive y recoger enlaces
     const driveLinks: string[] = [];
-    for (const file of item.uploads) {
-      const res = await fetch(file.url);
+    for (const up of uploads) {
+      const res = await fetch(up.url);
       const buffer = await res.arrayBuffer();
-
       const driveFile = await drive.files.create({
         requestBody: {
-          name: file.name,
-          parents: [driveFolderId],
+          name: up.name,
+          parents: process.env.DRIVE_FOLDER_ID ? [process.env.DRIVE_FOLDER_ID] : [],
         },
         media: {
-          mimeType: file.mimeType || "application/octet-stream",
+          mimeType: up.mimeType || "application/octet-stream",
           body: Buffer.from(buffer),
         },
-        fields: "webViewLink",
+        fields: "id,webViewLink",
       });
-
       driveLinks.push(driveFile.data.webViewLink!);
     }
 
-    // 7) Armar la fila con campos + enlaces
-    rowsToAppend.push([
-      new Date(item.ts).toISOString(),
-      item.fields.cliente,
-      item.fields.direccion,
-      item.fields.ciudad,
-      item.fields.tecnico,
-      item.fields.fechaVisita,
-      item.fields.codigoSKU,
-      item.fields.observacionesGenerales,
-      item.fields.clienteSatisfecho,
-      item.fields.seEntregoInstructivo,
-      item.fields.diagnostico,
-      item.fields.comentariosDiagnostico,
+    // 4) Preparar fila para Sheets
+    rows.push([
+      new Date(ts).toISOString(),
+      fields.cliente,
+      fields.direccion,
+      fields.ciudad,
+      fields.tecnico,
+      fields.fechaVisita,
+      fields.codigoSKU,
+      fields.observacionesGenerales,
+      fields.clienteSatisfecho,
+      fields.seEntregoInstructivo,
+      fields.diagnostico,
+      fields.comentariosDiagnostico,
+      fields.solucion,
+      fields.comentariosSolucion,
+      fields.pruebas,
+      fields.comentariosPruebas,
+      fields.transcripcionVoz,
       ...driveLinks,
     ]);
   }
 
-  // 8) Si hay algo, escribirlo en la hoja
-  if (rowsToAppend.length > 0) {
+  // 5) Si hay filas, anexarlas a la hoja
+  if (rows.length > 0) {
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
       range: "Sheet1!A:Z",
       valueInputOption: "RAW",
-      requestBody: { values: rowsToAppend },
+      requestBody: { values: rows },
     });
   }
 
-  return NextResponse.json({ processed: rowsToAppend.length });
+  return NextResponse.json({ processed: rows.length });
 }
-
-

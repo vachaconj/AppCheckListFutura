@@ -8,10 +8,10 @@ const redis = Redis.fromEnv();
 
 export async function POST(request: Request) {
   try {
-    // 1) Parse multipart con Web API
+    // 1) Parse multipart/form-data
     const formData = await request.formData();
 
-    // 2) Extraemos solo los campos de texto
+    // 2) Extraer campos de texto
     const fields: Record<string, string> = {};
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string") {
@@ -19,24 +19,26 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3) Subimos todos los archivos con el campo "files"
-    const uploads: { name: string; url: string }[] = [];
+    // 3) Subir archivos a Blob
+    const uploads: { name: string; url: string; mimeType?: string }[] = [];
+    // Ajusta "files" al name de tus inputs de archivo
     for (const entry of formData.getAll("files")) {
       if (entry instanceof File) {
         const arrayBuffer = await entry.arrayBuffer();
         const blob = await put(
           `tmp/${Date.now()}-${entry.name}`,
           arrayBuffer,
-          { access: "public" }
+          { access: "public" } // o "private" si prefieres
         );
-        uploads.push({ name: entry.name, url: blob.url });
+        uploads.push({ name: entry.name, url: blob.url, mimeType: entry.type });
       }
     }
 
-    // 4) Empujamos a la cola Upstash Redis
+    // 4) Empujar a la cola en Redis usando JSON válido
+    const payload = { fields, uploads, ts: Date.now() };
     await redis.lpush(
-      "cola-de-lista-de-verificación",
-      JSON.stringify({ fields, uploads, ts: Date.now() })
+      "lista-de-verificación-cola",
+      JSON.stringify(payload)
     );
 
     return NextResponse.json({ ok: true }, { status: 202 });
