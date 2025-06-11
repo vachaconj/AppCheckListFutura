@@ -159,12 +159,14 @@ export async function GET() {
   }
 
   if (rowsToWrite.length > 0) {
+    // *** AÑADIDO: Log de diagnóstico para verificar el nombre de la hoja ***
+    console.log(`Intentando escribir en la hoja: '${sheetName}'. (Valor de process.env.SHEET_NAME: ${process.env.SHEET_NAME})`);
     console.log(`Escribiendo ${rowsToWrite.length} fila(s) en Google Sheets...`);
     try {
       await sheets.spreadsheets.values.append({
         spreadsheetId: sheetId,
-        // *** CORRECCIÓN FINAL: Se especifica el rango de columnas para mayor robustez ***
-        range: `${sheetName}!A:T`,
+        // Se vuelve al método más simple y robusto.
+        range: sheetName,
         valueInputOption: "USER_ENTERED",
         requestBody: { values: rowsToWrite },
       });
