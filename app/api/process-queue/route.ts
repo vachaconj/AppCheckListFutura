@@ -1,7 +1,7 @@
 // app/api/process-queue/route.ts
 import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
-import { google } from "googleapis";
+import { google, sheets_v4, drive_v3 } from "googleapis"; // Importar tipos específicos
 import { Readable } from "stream";
 
 // 1) Forzar Node.js (para usar googleapis y Buffer/Stream)
@@ -35,8 +35,10 @@ const COLUMN_ORDER: string[] = [
 ];
 
 // 4) Función para inicializar los servicios de Google
-// Esto evita que se ejecute en cada petición si Vercel reutiliza el contexto
-let sheets: any, drive: any;
+// Se han añadido tipos específicos para 'sheets' y 'drive' en lugar de 'any'.
+let sheets: sheets_v4.Sheets | undefined;
+let drive: drive_v3.Drive | undefined;
+
 function initializeGoogleServices() {
   if (sheets && drive) {
     return;
@@ -68,29 +70,30 @@ export async function GET() {
 
   try {
     initializeGoogleServices();
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) { // CORRECCIÓN: Usar 'unknown' en lugar de 'any' en el catch block.
+    const message = error instanceof Error ? error.message : "Error desconocido al inicializar servicios.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   const sheetId = process.env.SPREADSHEET_ID;
   const driveFolder = process.env.DRIVE_FOLDER_ID;
-  const sheetName = process.env.SHEET_NAME || "Sheet1"; // Usa variable de entorno o 'Sheet1' por defecto
+  const sheetName = process.env.SHEET_NAME || "Sheet1";
 
-  if (!sheetId || !driveFolder) {
-    const message = "SPREADSHEET_ID o DRIVE_FOLDER_ID no están definidos en las variables de entorno.";
+  if (!sheetId || !driveFolder || !sheets || !drive) {
+    const message = "SPREADSHEET_ID, DRIVE_FOLDER_ID no están definidos, o los servicios de Google no se inicializaron.";
     console.error(message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const rowsToWrite: any[][] = [];
+  // CORRECCIÓN: Se ha especificado un tipo más seguro que 'any[][]'.
+  const rowsToWrite: string[][] = [];
   let processedCount = 0;
 
-  // 5) Procesamos toda la cola, un item a la vez
   while (true) {
     const raw = await redis.lpop<string>(QUEUE_KEY);
     if (!raw) {
       console.log("La cola está vacía. Finalizando.");
-      break; // Salir del bucle si no hay más items
+      break;
     }
 
     let item: {
@@ -103,7 +106,6 @@ export async function GET() {
       item = JSON.parse(raw);
       console.log(`Procesando item para cliente: ${item.fields.cliente || 'N/A'}`);
 
-      // 6) Subimos cada fichero a Drive y guardamos su link
       const driveLinks: string[] = [];
       for (const file of item.uploads) {
         try {
@@ -118,51 +120,50 @@ export async function GET() {
             },
             media: {
               mimeType: file.mimeType || "application/octet-stream",
-              body: Readable.from(Buffer.from(buf)), // Usar Stream para mayor robustez
+              body: Readable.from(Buffer.from(buf)),
             },
             fields: "webViewLink",
           });
-          driveLinks.push(created.data.webViewLink!);
+
+          if (created.data.webViewLink) {
+             driveLinks.push(created.data.webViewLink);
+          }
           console.log(`Archivo subido a Drive: ${file.name}`);
         } catch (uploadError) {
             console.error(`Error al subir el archivo '${file.name}' a Drive:`, uploadError);
-            driveLinks.push(`ERROR_SUBIENDO_${file.name}`); // Añadir un marcador de error
+            driveLinks.push(`ERROR_SUBIENDO_${file.name}`);
         }
       }
 
-      // 7) Preparamos la fila para Sheets con el ORDEN CORRECTO
-      const newRow = [new Date(item.ts).toISOString()]; // Columna A: Timestamp
+      const newRow = [new Date(item.ts).toISOString()];
       for (const key of COLUMN_ORDER) {
-        // Añadir el valor del campo o una cadena vacía si no existe
         newRow.push(item.fields[key] || "");
       }
-      newRow.push(driveLinks.join(", ")); // Última columna con los links de Drive
+      newRow.push(driveLinks.join(", "));
       
       rowsToWrite.push(newRow);
       processedCount++;
 
     } catch (parseError) {
       console.error("Error procesando un item de la cola (saltando item):", parseError, "Item crudo:", raw);
-      // Continuar con el siguiente item
       continue;
     }
   }
 
-  // 8) Si hay filas, las escribimos en Google Sheets de una sola vez
   if (rowsToWrite.length > 0) {
     console.log(`Escribiendo ${rowsToWrite.length} fila(s) en Google Sheets...`);
     try {
       await sheets.spreadsheets.values.append({
         spreadsheetId: sheetId,
-        range: `${sheetName}!A1`, // Apuntar a A1 para que 'append' funcione correctamente
-        valueInputOption: "USER_ENTERED", // 'USER_ENTERED' interpreta los datos como si un usuario los escribiera
+        range: `${sheetName}!A1`,
+        valueInputOption: "USER_ENTERED",
         requestBody: { values: rowsToWrite },
       });
       console.log("¡Filas escritas en Google Sheets con éxito!");
     } catch (sheetError) {
       console.error("!!! ERROR CRÍTICO al escribir en Google Sheets:", sheetError);
-      // Opcional: podrías intentar re-encolar los items fallidos
-      return NextResponse.json({ error: "Fallo al escribir en Google Sheets.", details: (sheetError as Error).message }, { status: 500 });
+      const message = sheetError instanceof Error ? sheetError.message : "Error desconocido al escribir en Sheets."
+      return NextResponse.json({ error: "Fallo al escribir en Google Sheets.", details: message }, { status: 500 });
     }
   }
 
