@@ -37,10 +37,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // 7) Empujamos la tarea (string JSON) a Redis
-    await redis.lpush(
-      QUEUE_KEY,
-      JSON.stringify({ fields, uploads, ts: Date.now() })
+    // 7) Empujamos la tarea como STRING JSON
+await redis.lpush(
+  "lista-de-verificación-cola-v3",          // ← tu clave única
+  JSON.stringify({ fields, uploads, ts: Date.now() })
     );
 
     return NextResponse.json({ ok: true }, { status: 202 });
