@@ -123,7 +123,6 @@ export async function GET() {
   let processedCount = 0;
 
   while (true) {
-    // *** SOLUCIÓN DEFINITIVA: Asumimos que Redis devuelve un objeto y lo manejamos directamente ***
     const item = await redis.rpop<QueueItem>(QUEUE_KEY);
 
     if (!item) {
@@ -134,12 +133,10 @@ export async function GET() {
     try {
       console.log(`Procesando item para cliente: ${item.fields?.cliente || 'N/A'}`);
       
-      // Subir archivos por separado
       const diagnosticoLinks = await uploadFilesToDrive(item.uploads.diagnostico, driveFolder, drive);
       const solucionLinks = await uploadFilesToDrive(item.uploads.solucion, driveFolder, drive);
       const pruebasLinks = await uploadFilesToDrive(item.uploads.pruebas, driveFolder, drive);
 
-      // Creamos un objeto con todos los datos para facilitar el mapeo a las columnas
       const rowData = {
         ...item.fields,
         fotosDiagnostico: diagnosticoLinks,
@@ -147,8 +144,7 @@ export async function GET() {
         fotosPruebas: pruebasLinks,
       };
 
-      // Construimos la fila en el orden exacto del Google Sheet
-      const newRow = [new Date(item.ts).toISOString()]; // Columna A
+      const newRow = [new Date(item.ts).toISOString()];
       COLUMN_ORDER.forEach(key => {
         newRow.push(rowData[key] || "");
       });
@@ -158,7 +154,6 @@ export async function GET() {
 
     } catch (processingError) {
       console.error("Error procesando item (saltando):", processingError, "Item:", item);
-      // No eliminamos el item, para poder inspeccionarlo en Redis si falla
       continue;
     }
   }
@@ -168,7 +163,8 @@ export async function GET() {
     try {
       await sheets.spreadsheets.values.append({
         spreadsheetId: sheetId,
-        range: `${sheetName}!A1`,
+        // *** CORRECCIÓN FINAL: Se pasa solo el nombre de la hoja. `append` encontrará la última fila automáticamente. ***
+        range: sheetName,
         valueInputOption: "USER_ENTERED",
         requestBody: { values: rowsToWrite },
       });
