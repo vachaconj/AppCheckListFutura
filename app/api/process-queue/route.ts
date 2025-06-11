@@ -9,9 +9,8 @@ export const runtime = "nodejs";
 const redis = Redis.fromEnv();
 const QUEUE_KEY = "lista-de-verificación-cola-v3";
 
-// *** CORRECCIÓN CRÍTICA: El orden de columnas ahora coincide con tu Google Sheet ***
-const COLUMN_ORDER: string[] = [
-  // A: Timestamp (se añade al principio)
+// *** CORRECCIÓN DEFINITIVA: El orden de columnas ahora coincide 1:1 con tu última imagen de Google Sheet ***
+const COLUMN_ORDER: (keyof QueueItem['fields'] | `fotos${'Diagnostico' | 'Solucion' | 'Pruebas'}`)[] = [
   "cliente",                // B
   "direccion",              // C
   "ciudad",                 // D
@@ -23,19 +22,37 @@ const COLUMN_ORDER: string[] = [
   "seEntregoInstructivo",   // J
   "diagnostico",            // K
   "comentariosDiagnostico", // L
-  "fotosDiagnostico",       // M (placeholder para los links)
+  "fotosDiagnostico",       // M (Placeholder para links de fotos)
   "solucion",               // N
   "comentariosSolucion",    // O
-  "fotosSolucion",          // P (placeholder para los links)
+  "fotosSolucion",          // P (Placeholder para links de fotos)
   "pruebas",                // Q
   "comentariosPruebas",     // R
-  "fotosPruebas",           // S (placeholder para los links)
+  "fotosPruebas",           // S (Placeholder para links de fotos)
   "transcripcionVoz",       // T
 ];
 
 type UploadedFile = { name: string; url: string; mimeType?: string };
+type QueueFields = {
+    cliente: string;
+    direccion: string;
+    ciudad: string;
+    tecnico: string;
+    fechaVisita: string;
+    codigoSku: string;
+    observacionesGenerales: string;
+    clienteSatisfecho: string;
+    seEntregoInstructivo: string;
+    diagnostico: string;
+    comentariosDiagnostico: string;
+    solucion: string;
+    comentariosSolucion: string;
+    pruebas: string;
+    comentariosPruebas: string;
+    transcripcionVoz: string;
+};
 type QueueItem = {
-  fields: Record<string, string>;
+  fields: QueueFields;
   uploads: {
     diagnostico: UploadedFile[];
     solucion: UploadedFile[];
@@ -106,37 +123,42 @@ export async function GET() {
   let processedCount = 0;
 
   while (true) {
-    const rawString = await redis.rpop(QUEUE_KEY);
-    if (!rawString) {
+    // *** SOLUCIÓN DEFINITIVA: Asumimos que Redis devuelve un objeto y lo manejamos directamente ***
+    const item = await redis.rpop<QueueItem>(QUEUE_KEY);
+
+    if (!item) {
       console.log("La cola está vacía. Finalizando.");
       break;
     }
-    try {
-      const item: QueueItem = JSON.parse(rawString);
-      console.log(`Procesando item para cliente: ${item.fields?.cliente || 'N/A'}`);
 
-      // Subir archivos por separado y obtener los links
+    try {
+      console.log(`Procesando item para cliente: ${item.fields?.cliente || 'N/A'}`);
+      
+      // Subir archivos por separado
       const diagnosticoLinks = await uploadFilesToDrive(item.uploads.diagnostico, driveFolder, drive);
       const solucionLinks = await uploadFilesToDrive(item.uploads.solucion, driveFolder, drive);
       const pruebasLinks = await uploadFilesToDrive(item.uploads.pruebas, driveFolder, drive);
 
-      // Creamos un objeto con todos los datos para facilitar el mapeo
-      const rowData: Record<string, string> = {
+      // Creamos un objeto con todos los datos para facilitar el mapeo a las columnas
+      const rowData = {
         ...item.fields,
         fotosDiagnostico: diagnosticoLinks,
         fotosSolucion: solucionLinks,
         fotosPruebas: pruebasLinks,
       };
 
-      // Construimos la fila en el orden correcto
-      const newRow = [new Date(item.ts).toISOString()]; // Columna A: Timestamp
-      for (const key of COLUMN_ORDER) {
+      // Construimos la fila en el orden exacto del Google Sheet
+      const newRow = [new Date(item.ts).toISOString()]; // Columna A
+      COLUMN_ORDER.forEach(key => {
         newRow.push(rowData[key] || "");
-      }
+      });
+      
       rowsToWrite.push(newRow);
       processedCount++;
+
     } catch (processingError) {
-      console.error("Error procesando item (saltando):", processingError, "Item crudo:", rawString);
+      console.error("Error procesando item (saltando):", processingError, "Item:", item);
+      // No eliminamos el item, para poder inspeccionarlo en Redis si falla
       continue;
     }
   }
