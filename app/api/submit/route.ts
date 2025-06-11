@@ -3,20 +3,27 @@ import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { Redis } from "@upstash/redis";
 
+// 1) Deshabilitamos el body parser nativo
 export const config = { api: { bodyParser: false } };
+
+// 2) Instanciamos Redis
 const redis = Redis.fromEnv();
 
-export async function POST(request: Request) {
-  try {
-    const form = await request.formData();
+// 3) Clave única de la cola (mismo nombre en ambos endpoints)
+const QUEUE_KEY = "lista-de-verificación-cola-v3";
 
-    // 1) Campos texto
+export async function POST(req: Request) {
+  try {
+    // 4) Parse multipart con Web API
+    const form = await req.formData();
+
+    // 5) Extraemos campos de texto
     const fields: Record<string, string> = {};
-    for (const [k, v] of form.entries()) {
-      if (typeof v === "string") fields[k] = v;
+    for (const [key, value] of form.entries()) {
+      if (typeof value === "string") fields[key] = value;
     }
 
-    // 2) Subida a Blob
+    // 6) Subimos los archivos a Blob
     const uploads: { name: string; url: string; mimeType?: string }[] = [];
     for (const file of form.getAll("files")) {
       if (file instanceof File) {
@@ -30,16 +37,16 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3) Empujar a Redis misma clave que en process-queue
+    // 7) Empujamos la tarea (string JSON) a Redis
     await redis.lpush(
-      "cola-de-lista-de-verificación",
+      QUEUE_KEY,
       JSON.stringify({ fields, uploads, ts: Date.now() })
     );
 
     return NextResponse.json({ ok: true }, { status: 202 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("submit error", msg);
+    console.error("submit error:", msg);
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
