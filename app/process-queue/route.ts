@@ -17,18 +17,21 @@ const COLUMN_ORDER: string[] = [
   "transcripcionVoz",
 ];
 
+// Definimos el tipo de objeto que esperamos sacar de la cola.
+type QueueItem = {
+  fields: Record<string, string>;
+  uploads: { name: string; url: string; mimeType?: string }[];
+  ts: number;
+};
+
 let sheets: sheets_v4.Sheets | undefined;
 let drive: drive_v3.Drive | undefined;
 
 function initializeGoogleServices() {
-  if (sheets && drive) {
-    return;
-  }
+  if (sheets && drive) { return; }
   try {
     const credsJson = process.env.GSHEETS_CREDENTIALS_JSON;
-    if (!credsJson) {
-      throw new Error("La variable de entorno GSHEETS_CREDENTIALS_JSON no está definida.");
-    }
+    if (!credsJson) throw new Error("GSHEETS_CREDENTIALS_JSON no está definida.");
     const creds = JSON.parse(credsJson);
     const auth = new google.auth.GoogleAuth({
       credentials: creds,
@@ -61,7 +64,7 @@ export async function GET() {
   const sheetName = process.env.SHEET_NAME || "Sheet1";
 
   if (!sheetId || !driveFolder || !sheets || !drive) {
-    const message = "SPREADSHEET_ID, DRIVE_FOLDER_ID no están definidos, o los servicios de Google no se inicializaron.";
+    const message = "Variables de entorno críticas no definidas o servicios de Google no inicializados.";
     console.error(message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -70,46 +73,27 @@ export async function GET() {
   let processedCount = 0;
 
   while (true) {
-    const raw: unknown = await redis.lpop(QUEUE_KEY);
-    if (!raw) {
+    // *** SOLUCIÓN DEFINITIVA ***
+    // Le pedimos a Redis que nos devuelva un objeto del tipo QueueItem.
+    // La librería se encarga del JSON.parse() automáticamente.
+    const item = await redis.lpop<QueueItem>(QUEUE_KEY);
+
+    if (!item) {
       console.log("La cola está vacía. Finalizando.");
       break;
     }
 
-    type QueueItem = {
-      fields: Record<string, string>;
-      uploads: { name: string; url: string; mimeType?: string }[];
-      ts: number;
-    };
-    let item: QueueItem;
-
     try {
-      // *** MEJORA DE ROBUSTEZ DEFINITIVA ***
-      // Verificamos el tipo de dato que nos entrega Redis para no doble-procesarlo.
-      console.log(`Item crudo recibido de Redis. Tipo: ${typeof raw}`);
-
-      if (typeof raw === "string") {
-        // Si Redis nos dio un string, lo procesamos.
-        console.log("El item es un string, procesando con JSON.parse...");
-        item = JSON.parse(raw);
-      } else if (typeof raw === "object" && raw !== null) {
-        // Si Redis ya nos dio un objeto, lo usamos directamente.
-        console.log("El item ya es un objeto, usándolo directamente.");
-        item = raw as QueueItem;
-      } else {
-        // Si es cualquier otra cosa, es un error y lo saltamos.
-        throw new Error(`Tipo de item no válido en la cola: ${typeof raw}`);
-      }
-
-      console.log(`Procesando item para cliente: ${item.fields.cliente || 'N/A'}`);
+      // Como ya tenemos un objeto, procedemos directamente.
+      // El bloque try/catch ahora nos protegerá si el objeto no tiene la forma esperada.
+      console.log(`Procesando item para cliente: ${item.fields?.cliente || 'N/A'}`);
 
       const driveLinks: string[] = [];
       for (const file of item.uploads) {
         try {
           const res = await fetch(file.url);
-          if (!res.ok) throw new Error(`Error al descargar el archivo desde Vercel Blob: ${res.statusText}`);
+          if (!res.ok) throw new Error(`Error al descargar archivo: ${res.statusText}`);
           const buf = await res.arrayBuffer();
-          
           const created = await drive.files.create({
             requestBody: { name: file.name, parents: [driveFolder] },
             media: {
@@ -118,13 +102,11 @@ export async function GET() {
             },
             fields: "webViewLink",
           });
-
           if (created.data.webViewLink) {
              driveLinks.push(created.data.webViewLink);
           }
-          console.log(`Archivo subido a Drive: ${file.name}`);
         } catch (uploadError) {
-            console.error(`Error al subir el archivo '${file.name}' a Drive:`, uploadError);
+            console.error(`Error al subir el archivo '${file.name}':`, uploadError);
             driveLinks.push(`ERROR_SUBIENDO_${file.name}`);
         }
       }
@@ -138,8 +120,9 @@ export async function GET() {
       rowsToWrite.push(newRow);
       processedCount++;
 
-    } catch (parseError) {
-      console.error("Error procesando un item de la cola (saltando item):", parseError, "Item crudo:", raw);
+    } catch (processingError) {
+      // Este error ahora solo ocurrirá si el objeto `item` está malformado.
+      console.error("Error procesando un item malformado (saltando):", processingError, "Item crudo:", item);
       continue;
     }
   }
@@ -156,7 +139,7 @@ export async function GET() {
       console.log("¡Filas escritas en Google Sheets con éxito!");
     } catch (sheetError) {
       console.error("!!! ERROR CRÍTICO al escribir en Google Sheets:", sheetError);
-      const message = sheetError instanceof Error ? sheetError.message : "Error desconocido al escribir en Sheets."
+      const message = sheetError instanceof Error ? sheetError.message : "Error desconocido."
       return NextResponse.json({ error: "Fallo al escribir en Google Sheets.", details: message }, { status: 500 });
     }
   }
