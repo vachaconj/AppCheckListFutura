@@ -2,40 +2,42 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { Redis } from "@upstash/redis";
+import type { NextRequest } from 'next/server';
 
-// 1) Deshabilitamos el body parser de Next
-export const config = { api: { bodyParser: false } };
+export const config = {
+  api: { bodyParser: false },
+};
 
-// 2) Redis y nombre único de la cola
-const redis     = Redis.fromEnv();
+const redis = Redis.fromEnv();
 const QUEUE_KEY = "lista-de-verificación-cola-v3";
 
-export async function POST(request: Request) {
-  try {
-    // 3) Parse multipart/form-data
-    const form = await request.formData();
+async function uploadFile(file: File): Promise<{ name: string; url: string; mimeType: string }> {
+  const buffer = await file.arrayBuffer();
+  const blob = await put(`tmp/${Date.now()}-${file.name}`, buffer, { access: 'public' });
+  return { name: file.name, url: blob.url, mimeType: file.type };
+}
 
-    // 4) Campos de texto
+export async function POST(request: NextRequest) {
+  try {
+    const form = await request.formData();
     const fields: Record<string, string> = {};
     for (const [k, v] of form.entries()) {
-      if (typeof v === "string") fields[k] = v;
-    }
-
-    // 5) Subir archivos a Blob
-    const uploads: { name: string; url: string; mimeType: string }[] = [];
-    for (const file of form.getAll("files")) {
-      if (file instanceof File) {
-        const buf  = await file.arrayBuffer();
-        const blob = await put(
-          `tmp/${Date.now()}-${file.name}`,
-          buf,
-          { access: "public" }
-        );
-        uploads.push({ name: file.name, url: blob.url, mimeType: file.type });
+      if (typeof v === "string") {
+        fields[k] = v;
       }
     }
 
-    // 6) Encolamos en Redis usando la MISMA clave que lee el consumer
+    // *** CORRECCIÓN CRÍTICA: Procesar cada grupo de archivos por separado ***
+    const diagnosticoFiles = form.getAll("diagnosticoFiles").filter((f): f is File => f instanceof File);
+    const solucionFiles = form.getAll("solucionFiles").filter((f): f is File => f instanceof File);
+    const pruebasFiles = form.getAll("pruebasFiles").filter((f): f is File => f instanceof File);
+    
+    const uploads = {
+      diagnostico: await Promise.all(diagnosticoFiles.map(uploadFile)),
+      solucion: await Promise.all(solucionFiles.map(uploadFile)),
+      pruebas: await Promise.all(pruebasFiles.map(uploadFile)),
+    };
+
     await redis.lpush(
       QUEUE_KEY,
       JSON.stringify({ fields, uploads, ts: Date.now() })
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true }, { status: 202 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("submit error:", msg);
+    console.error("submit error:", msg, err);
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
