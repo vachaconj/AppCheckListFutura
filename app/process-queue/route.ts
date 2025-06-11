@@ -17,7 +17,6 @@ const COLUMN_ORDER: string[] = [
   "transcripcionVoz",
 ];
 
-// Definimos el tipo de objeto que esperamos sacar de la cola.
 type QueueItem = {
   fields: Record<string, string>;
   uploads: { name: string; url: string; mimeType?: string }[];
@@ -72,20 +71,24 @@ export async function GET() {
   const rowsToWrite: string[][] = [];
   let processedCount = 0;
 
+  // *** SOLUCIÓN DEFINITIVA v2: Usar un método más explícito para leer de Redis ***
+  // En lugar de LPOP, leemos el último elemento con LRANGE y luego lo eliminamos con LTRIM.
+  // Esto evita el comportamiento ambiguo de `lpop` en Vercel.
   while (true) {
-    // *** SOLUCIÓN DEFINITIVA ***
-    // Le pedimos a Redis que nos devuelva un objeto del tipo QueueItem.
-    // La librería se encarga del JSON.parse() automáticamente.
-    const item = await redis.lpop<QueueItem>(QUEUE_KEY);
+    // 1. Leemos el último elemento de la lista (el más antiguo en nuestra cola)
+    const results = await redis.lrange<string>(QUEUE_KEY, -1, -1);
+    const rawString = results[0];
 
-    if (!item) {
+    if (!rawString) {
       console.log("La cola está vacía. Finalizando.");
       break;
     }
 
+    let item: QueueItem;
+
     try {
-      // Como ya tenemos un objeto, procedemos directamente.
-      // El bloque try/catch ahora nos protegerá si el objeto no tiene la forma esperada.
+      // 2. Ahora estamos seguros de que `rawString` es un string, procedemos a parsearlo.
+      item = JSON.parse(rawString);
       console.log(`Procesando item para cliente: ${item.fields?.cliente || 'N/A'}`);
 
       const driveLinks: string[] = [];
@@ -116,13 +119,16 @@ export async function GET() {
         newRow.push(item.fields[key] || "");
       }
       newRow.push(driveLinks.join(", "));
-      
       rowsToWrite.push(newRow);
       processedCount++;
 
+      // 3. Si todo fue exitoso, eliminamos el elemento que acabamos de procesar de la cola.
+      await redis.rpop(QUEUE_KEY); // rpop elimina el último elemento, que es el que leímos.
+
     } catch (processingError) {
-      // Este error ahora solo ocurrirá si el objeto `item` está malformado.
-      console.error("Error procesando un item malformado (saltando):", processingError, "Item crudo:", item);
+      console.error("Error procesando un item malformado (saltando):", processingError, "Item crudo:", rawString);
+      // Si hay un error, eliminamos el item malo para no volver a procesarlo.
+      await redis.rpop(QUEUE_KEY);
       continue;
     }
   }
