@@ -163,8 +163,8 @@ export async function GET() {
     try {
       await sheets.spreadsheets.values.append({
         spreadsheetId: sheetId,
-        // *** CORRECCIÓN FINAL: Se pasa solo el nombre de la hoja. `append` encontrará la última fila automáticamente. ***
-        range: sheetName,
+        // *** CORRECCIÓN FINAL: Se especifica el rango de columnas para mayor robustez ***
+        range: `${sheetName}!A:T`,
         valueInputOption: "USER_ENTERED",
         requestBody: { values: rowsToWrite },
       });
