@@ -9,55 +9,24 @@ export const runtime = "nodejs";
 const redis = Redis.fromEnv();
 const QUEUE_KEY = "lista-de-verificación-cola-v3";
 
-// *** CORRECCIÓN DEFINITIVA: El orden de columnas ahora coincide 1:1 con tu última imagen de Google Sheet ***
 const COLUMN_ORDER: (keyof QueueItem['fields'] | `fotos${'Diagnostico' | 'Solucion' | 'Pruebas'}`)[] = [
-  "cliente",                // B
-  "direccion",              // C
-  "ciudad",                 // D
-  "tecnico",                // E
-  "fechaVisita",            // F
-  "codigoSku",              // G
-  "observacionesGenerales",   // H
-  "clienteSatisfecho",      // I
-  "seEntregoInstructivo",   // J
-  "diagnostico",            // K
-  "comentariosDiagnostico", // L
-  "fotosDiagnostico",       // M (Placeholder para links de fotos)
-  "solucion",               // N
-  "comentariosSolucion",    // O
-  "fotosSolucion",          // P (Placeholder para links de fotos)
-  "pruebas",                // Q
-  "comentariosPruebas",     // R
-  "fotosPruebas",           // S (Placeholder para links de fotos)
-  "transcripcionVoz",       // T
+  "cliente", "direccion", "ciudad", "tecnico", "fechaVisita", "codigoSku", 
+  "observacionesGenerales", "clienteSatisfecho", "seEntregoInstructivo", "diagnostico", 
+  "comentariosDiagnostico", "fotosDiagnostico", "solucion", "comentariosSolucion", 
+  "fotosSolucion", "pruebas", "comentariosPruebas", "fotosPruebas", "transcripcionVoz",
 ];
 
 type UploadedFile = { name: string; url: string; mimeType?: string };
 type QueueFields = {
-    cliente: string;
-    direccion: string;
-    ciudad: string;
-    tecnico: string;
-    fechaVisita: string;
-    codigoSku: string;
-    observacionesGenerales: string;
-    clienteSatisfecho: string;
-    seEntregoInstructivo: string;
-    diagnostico: string;
-    comentariosDiagnostico: string;
-    solucion: string;
-    comentariosSolucion: string;
-    pruebas: string;
-    comentariosPruebas: string;
-    transcripcionVoz: string;
+    cliente: string; direccion: string; ciudad: string; tecnico: string;
+    fechaVisita: string; codigoSku: string; observacionesGenerales: string;
+    clienteSatisfecho: string; seEntregoInstructivo: string; diagnostico: string;
+    comentariosDiagnostico: string; solucion: string; comentariosSolucion: string;
+    pruebas: string; comentariosPruebas: string; transcripcionVoz: string;
 };
 type QueueItem = {
   fields: QueueFields;
-  uploads: {
-    diagnostico: UploadedFile[];
-    solucion: UploadedFile[];
-    pruebas: UploadedFile[];
-  };
+  uploads: { diagnostico: UploadedFile[]; solucion: UploadedFile[]; pruebas: UploadedFile[]; };
   ts: number;
 };
 
@@ -113,7 +82,9 @@ export async function GET() {
 
   const sheetId = process.env.SPREADSHEET_ID;
   const driveFolder = process.env.DRIVE_FOLDER_ID;
-  const sheetName = process.env.SHEET_NAME || "Sheet1";
+  
+  // *** PRUEBA DEFINITIVA: Forzamos el nombre de la hoja directamente en el código ***
+  const sheetName = "bd-atencion-futura";
 
   if (!sheetId || !driveFolder || !sheets || !drive) {
     return NextResponse.json({ error: "Configuración de entorno incompleta." }, { status: 500 });
@@ -124,34 +95,25 @@ export async function GET() {
 
   while (true) {
     const item = await redis.rpop<QueueItem>(QUEUE_KEY);
-
     if (!item) {
       console.log("La cola está vacía. Finalizando.");
       break;
     }
-
     try {
       console.log(`Procesando item para cliente: ${item.fields?.cliente || 'N/A'}`);
-      
       const diagnosticoLinks = await uploadFilesToDrive(item.uploads.diagnostico, driveFolder, drive);
       const solucionLinks = await uploadFilesToDrive(item.uploads.solucion, driveFolder, drive);
       const pruebasLinks = await uploadFilesToDrive(item.uploads.pruebas, driveFolder, drive);
-
       const rowData = {
         ...item.fields,
         fotosDiagnostico: diagnosticoLinks,
         fotosSolucion: solucionLinks,
         fotosPruebas: pruebasLinks,
       };
-
       const newRow = [new Date(item.ts).toISOString()];
-      COLUMN_ORDER.forEach(key => {
-        newRow.push(rowData[key] || "");
-      });
-      
+      COLUMN_ORDER.forEach(key => { newRow.push(rowData[key] || ""); });
       rowsToWrite.push(newRow);
       processedCount++;
-
     } catch (processingError) {
       console.error("Error procesando item (saltando):", processingError, "Item:", item);
       continue;
@@ -159,14 +121,11 @@ export async function GET() {
   }
 
   if (rowsToWrite.length > 0) {
-    // *** AÑADIDO: Log de diagnóstico para verificar el nombre de la hoja ***
-    console.log(`Intentando escribir en la hoja: '${sheetName}'. (Valor de process.env.SHEET_NAME: ${process.env.SHEET_NAME})`);
-    console.log(`Escribiendo ${rowsToWrite.length} fila(s) en Google Sheets...`);
+    console.log(`Intentando escribir en la hoja: '${sheetName}'...`);
     try {
       await sheets.spreadsheets.values.append({
         spreadsheetId: sheetId,
-        // Se vuelve al método más simple y robusto.
-        range: sheetName,
+        range: `${sheetName}!A1:T`, // Rango explícito para mayor seguridad
         valueInputOption: "USER_ENTERED",
         requestBody: { values: rowsToWrite },
       });
