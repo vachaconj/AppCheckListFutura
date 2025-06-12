@@ -83,8 +83,8 @@ export async function GET() {
   const sheetId = process.env.SPREADSHEET_ID;
   const driveFolder = process.env.DRIVE_FOLDER_ID;
   
-  // *** PRUEBA DEFINITIVA: Forzamos el nombre de la hoja directamente en el código ***
-  const sheetName = "bd-atencion-futura";
+  // *** VERSIÓN FINAL: Volvemos a usar la variable de entorno ***
+  const sheetName = process.env.SHEET_NAME || "Sheet1";
 
   if (!sheetId || !driveFolder || !sheets || !drive) {
     return NextResponse.json({ error: "Configuración de entorno incompleta." }, { status: 500 });
@@ -125,7 +125,7 @@ export async function GET() {
     try {
       await sheets.spreadsheets.values.append({
         spreadsheetId: sheetId,
-        range: `${sheetName}!A1:T`, // Rango explícito para mayor seguridad
+        range: `${sheetName}!A1:T`,
         valueInputOption: "USER_ENTERED",
         requestBody: { values: rowsToWrite },
       });
