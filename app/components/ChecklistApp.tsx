@@ -2,12 +2,12 @@
 "use client";
 
 import { useState, useRef, useEffect, ChangeEvent } from "react";
-import imageCompression from 'browser-image-compression'; // <-- Importar la librería
+import imageCompression from 'browser-image-compression';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card"; // Importar CardHeader
 import { Label } from "@/components/ui/label";
 import { skuList } from "@/app/data/skuList";
 import { AccordionSection } from "@/components/ui/accordion";
@@ -79,7 +79,6 @@ export default function ChecklistApp() {
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
-  // *** FUNCIÓN MEJORADA: Procesa archivos, comprime solo imágenes ***
   const processFiles = async (fileList: FileList | null): Promise<File[]> => {
     if (!fileList) return [];
     
@@ -90,12 +89,10 @@ export default function ChecklistApp() {
     };
 
     const processingPromises = Array.from(fileList).map(file => {
-      // Revisa si el archivo es de tipo imagen
       if (file.type.startsWith('image/')) {
         console.log(`Comprimiendo imagen: ${file.name}...`);
         return imageCompression(file, options);
       } else {
-        // Si no es una imagen (ej. un video), lo devuelve tal cual sin procesar.
         console.log(`Saltando compresión para archivo no-imagen: ${file.name}`);
         return Promise.resolve(file);
       }
@@ -109,13 +106,11 @@ export default function ChecklistApp() {
     setIsProcessingFiles(true);
 
     try {
-      // *** CAMBIO EN handleSubmit: Ahora usa la función `processFiles` ***
       const processedDiagnostico = await processFiles(form.archivosDiagnostico);
       const processedSolucion = await processFiles(form.archivosSolucion);
       const processedPruebas = await processFiles(form.archivosPruebas);
 
       const formData = new FormData();
-      // Añadir campos de texto y checkboxes...
       formData.append("cliente", form.cliente);
       formData.append("direccion", form.direccion);
       formData.append("ciudad", form.ciudad);
@@ -132,8 +127,7 @@ export default function ChecklistApp() {
       formData.append("diagnostico", form.diagnostico.join(", "));
       formData.append("solucion", form.solucion.join(", "));
       formData.append("pruebas", form.pruebas.join(", "));
-
-      // Añadir los archivos YA PROCESADOS (imágenes comprimidas y videos originales)
+      
       processedDiagnostico.forEach(file => formData.append("diagnosticoFiles", file));
       processedSolucion.forEach(file => formData.append("solucionFiles", file));
       processedPruebas.forEach(file => formData.append("pruebasFiles", file));
@@ -149,7 +143,6 @@ export default function ChecklistApp() {
 
     } catch (err) {
       console.error("Error en handleSubmit:", err);
-      // El error de la librería de compresión ahora será capturado aquí
       alert(`Ocurrió un error: ${(err as Error).message}`);
     } finally {
       setIsProcessingFiles(false);
@@ -157,32 +150,57 @@ export default function ChecklistApp() {
   };
 
   return (
-    <Card className="max-w-2xl mx-auto mt-10 shadow-md">
-      <CardContent className="p-6 space-y-6">
-        <h1 className="text-2xl font-bold text-center">Checklist de Visita Técnica</h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* ... Todos tus inputs y acordeones siguen igual ... */}
-          <div><Label htmlFor="cliente">Cliente</Label><Input id="cliente" name="cliente" value={form.cliente} onChange={handleInputChange} required /></div>
-          <div><Label htmlFor="direccion">Dirección</Label><Input id="direccion" name="direccion" value={form.direccion} onChange={handleInputChange} required /></div>
-          <div><Label htmlFor="ciudad">Ciudad</Label><Input id="ciudad" name="ciudad" value={form.ciudad} onChange={handleInputChange} required /></div>
-          <div><Label htmlFor="tecnico">Técnico</Label><Input id="tecnico" name="tecnico" value={form.tecnico} onChange={handleInputChange} required /></div>
-          <div><Label htmlFor="fechaVisita">Fecha de visita</Label><Input id="fechaVisita" name="fechaVisita" type="date" value={form.fechaVisita} onChange={handleInputChange} required /></div>
-          <div><Label htmlFor="codigoSku">Código SKU</Label><Input id="codigoSku" name="codigoSku" value={form.codigoSku} onChange={handleInputChange} list="sku-options" required /><datalist id="sku-options">{skuList.map((sku, idx) => ( <option key={idx} value={sku} /> ))}</datalist></div>
-          <div><Label htmlFor="observacionesGenerales">Observaciones generales</Label><Textarea id="observacionesGenerales" name="observacionesGenerales" value={form.observacionesGenerales} onChange={handleInputChange} /></div>
-          <div className="flex items-center space-x-2"><Checkbox id="clienteSatisfecho" name="clienteSatisfecho" checked={form.clienteSatisfecho} onCheckedChange={(v) => setForm(p => ({...p, clienteSatisfecho: v === true}))} /><Label htmlFor="clienteSatisfecho">Cliente satisfecho</Label></div>
-          <div className="flex items-center space-x-2"><Checkbox id="seEntregoInstructivo" name="seEntregoInstructivo" checked={form.seEntregoInstructivo} onCheckedChange={(v) => setForm(p => ({...p, seEntregoInstructivo: v === true}))} /><Label htmlFor="seEntregoInstructivo">Se entregó instructivo</Label></div>
-          <hr/>
-          <AccordionSection title="Diagnostico" options={diagnosticoOpciones} fileFieldName="diagnosticoFiles" selectedOptions={form.diagnostico} onOptionsChange={(arr) => setForm(p => ({ ...p, diagnostico: arr }))} commentsValue={form.comentariosDiagnostico} onCommentsChange={(e) => setForm(p => ({ ...p, comentariosDiagnostico: e.target.value }))} onFileChange={(e) => handleFileChange("archivosDiagnostico", e.target.files)} />
-          <AccordionSection title="Solucion" options={solucionOpciones} fileFieldName="solucionFiles" selectedOptions={form.solucion} onOptionsChange={(arr) => setForm(p => ({ ...p, solucion: arr }))} commentsValue={form.comentariosSolucion} onCommentsChange={(e) => setForm(p => ({ ...p, comentariosSolucion: e.target.value }))} onFileChange={(e) => handleFileChange("archivosSolucion", e.target.files)} />
-          <AccordionSection title="Pruebas" options={pruebasOpciones} fileFieldName="pruebasFiles" selectedOptions={form.pruebas} onOptionsChange={(arr) => setForm(p => ({ ...p, pruebas: arr }))} commentsValue={form.comentariosPruebas} onCommentsChange={(e) => setForm(p => ({ ...p, comentariosPruebas: e.target.value }))} onFileChange={(e) => handleFileChange("archivosPruebas", e.target.files)} />
-          <hr/>
-          <div><Label htmlFor="transcripcionVoz">Transcripción de voz a texto</Label><Textarea id="transcripcionVoz" name="transcripcionVoz" value={form.transcripcionVoz} onChange={handleInputChange} /><div className="flex space-x-2 mt-2"><Button type="button" onClick={handleStartRecording}>Grabar</Button><Button type="button" onClick={handleStopRecording}>Detener</Button></div></div>
-          <hr/>
-          <Button type="submit" className="w-full" disabled={isProcessingFiles}>
-            {isProcessingFiles ? "Procesando archivos..." : "Enviar"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    // *** CAMBIO DE ESTILO: Fondo general de la página ***
+    <div className="bg-slate-50 min-h-screen p-4 sm:p-6 lg:p-8">
+      <Card className="max-w-3xl mx-auto shadow-lg">
+        {/* *** NUEVO: Cabecera con Logo y Título *** */}
+        <CardHeader className="bg-slate-800 text-white p-6 rounded-t-lg">
+            <div className="flex items-center space-x-4">
+                {/* Reemplaza la URL de `src` con la URL de tu propio logo */}
+                <img 
+                    src="/logo.jpg" //  <-- ¡Importante! La barra al inicio. 
+                    alt="Logo de la Empresa" 
+                    className="h-12"
+                />
+                <h1 className="text-2xl font-bold">
+                  Checklist de Visita Técnica
+                </h1>
+            </div>
+        </CardHeader>
+
+        <CardContent className="p-6 md:p-8 space-y-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* ... El resto de tus inputs y acordeones ... */}
+            <div><Label htmlFor="cliente" className="font-semibold text-slate-700">Cliente</Label><Input id="cliente" name="cliente" value={form.cliente} onChange={handleInputChange} required /></div>
+            <div><Label htmlFor="direccion" className="font-semibold text-slate-700">Dirección</Label><Input id="direccion" name="direccion" value={form.direccion} onChange={handleInputChange} required /></div>
+            <div><Label htmlFor="ciudad" className="font-semibold text-slate-700">Ciudad</Label><Input id="ciudad" name="ciudad" value={form.ciudad} onChange={handleInputChange} required /></div>
+            <div><Label htmlFor="tecnico" className="font-semibold text-slate-700">Técnico</Label><Input id="tecnico" name="tecnico" value={form.tecnico} onChange={handleInputChange} required /></div>
+            <div><Label htmlFor="fechaVisita" className="font-semibold text-slate-700">Fecha de visita</Label><Input id="fechaVisita" name="fechaVisita" type="date" value={form.fechaVisita} onChange={handleInputChange} required /></div>
+            <div><Label htmlFor="codigoSku" className="font-semibold text-slate-700">Código SKU</Label><Input id="codigoSku" name="codigoSku" value={form.codigoSku} onChange={handleInputChange} list="sku-options" required /><datalist id="sku-options">{skuList.map((sku, idx) => ( <option key={idx} value={sku} /> ))}</datalist></div>
+            <div><Label htmlFor="observacionesGenerales" className="font-semibold text-slate-700">Observaciones generales</Label><Textarea id="observacionesGenerales" name="observacionesGenerales" value={form.observacionesGenerales} onChange={handleInputChange} /></div>
+            
+            <div className="flex items-center space-x-2"><Checkbox id="clienteSatisfecho" name="clienteSatisfecho" checked={form.clienteSatisfecho} onCheckedChange={(v) => setForm(p => ({...p, clienteSatisfecho: v === true}))} /><Label htmlFor="clienteSatisfecho" className="text-slate-600">Cliente satisfecho</Label></div>
+            <div className="flex items-center space-x-2"><Checkbox id="seEntregoInstructivo" name="seEntregoInstructivo" checked={form.seEntregoInstructivo} onCheckedChange={(v) => setForm(p => ({...p, seEntregoInstructivo: v === true}))} /><Label htmlFor="seEntregoInstructivo" className="text-slate-600">Se entregó instructivo</Label></div>
+            
+            <hr/>
+            
+            <AccordionSection title="Diagnostico" options={diagnosticoOpciones} fileFieldName="diagnosticoFiles" selectedOptions={form.diagnostico} onOptionsChange={(arr) => setForm(p => ({ ...p, diagnostico: arr }))} commentsValue={form.comentariosDiagnostico} onCommentsChange={(e) => setForm(p => ({ ...p, comentariosDiagnostico: e.target.value }))} onFileChange={(e) => handleFileChange("archivosDiagnostico", e.target.files)} />
+            <AccordionSection title="Solucion" options={solucionOpciones} fileFieldName="solucionFiles" selectedOptions={form.solucion} onOptionsChange={(arr) => setForm(p => ({ ...p, solucion: arr }))} commentsValue={form.comentariosSolucion} onCommentsChange={(e) => setForm(p => ({ ...p, comentariosSolucion: e.target.value }))} onFileChange={(e) => handleFileChange("archivosSolucion", e.target.files)} />
+            <AccordionSection title="Pruebas" options={pruebasOpciones} fileFieldName="pruebasFiles" selectedOptions={form.pruebas} onOptionsChange={(arr) => setForm(p => ({ ...p, pruebas: arr }))} commentsValue={form.comentariosPruebas} onCommentsChange={(e) => setForm(p => ({ ...p, comentariosPruebas: e.target.value }))} onFileChange={(e) => handleFileChange("archivosPruebas", e.target.files)} />
+            
+            <hr/>
+            
+            <div><Label htmlFor="transcripcionVoz" className="font-semibold text-slate-700">Transcripción de voz a texto</Label><Textarea id="transcripcionVoz" name="transcripcionVoz" value={form.transcripcionVoz} onChange={handleInputChange} /><div className="flex space-x-2 mt-2"><Button type="button" onClick={handleStartRecording} variant="outline">Grabar</Button><Button type="button" onClick={handleStopRecording} variant="outline">Detener</Button></div></div>
+            
+            <hr/>
+            
+            {/* *** CAMBIO DE ESTILO: Botón de envío principal *** */}
+            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-lg py-6" disabled={isProcessingFiles}>
+              {isProcessingFiles ? "Procesando archivos..." : "Enviar Reporte"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
