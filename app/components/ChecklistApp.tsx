@@ -44,7 +44,6 @@ export default function ChecklistApp() {
     transcripcionVoz: "",
   });
   
-  // *** NUEVO ESTADO: Para feedback visual durante la compresión ***
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
 
   const diagnosticoOpciones = [ "No imprime negro / color faltante", "Cabezal se choca con material", "Carro desalineado", "Fugas de tinta en amortiguadores / cabezales", "Banding / líneas / imagen doble", "Sensor de material no detecta", "Luz LED dañada / fallo electrónico", "Tinta se evapora / baja presión en dampers", "Software congela al imprimir", "Cabezal no registra lectura" ];
@@ -80,38 +79,40 @@ export default function ChecklistApp() {
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
-  // *** NUEVA FUNCIÓN: Comprime una lista de archivos ***
-  const compressFiles = async (fileList: FileList | null): Promise<File[]> => {
+  // *** FUNCIÓN MEJORADA: Procesa archivos, comprime solo imágenes ***
+  const processFiles = async (fileList: FileList | null): Promise<File[]> => {
     if (!fileList) return [];
     
     const options = {
-      maxSizeMB: 1,          // El tamaño máximo de la imagen en MB
-      maxWidthOrHeight: 1920, // Redimensiona la imagen al ancho/alto máximo
-      useWebWorker: true,    // Usa un worker para no bloquear la UI
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1920,
+      useWebWorker: true,
     };
 
-    const compressionPromises = Array.from(fileList).map(file => {
-      console.log(`Comprimiendo ${file.name}... Tamaño original: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
-      return imageCompression(file, options);
+    const processingPromises = Array.from(fileList).map(file => {
+      // Revisa si el archivo es de tipo imagen
+      if (file.type.startsWith('image/')) {
+        console.log(`Comprimiendo imagen: ${file.name}...`);
+        return imageCompression(file, options);
+      } else {
+        // Si no es una imagen (ej. un video), lo devuelve tal cual sin procesar.
+        console.log(`Saltando compresión para archivo no-imagen: ${file.name}`);
+        return Promise.resolve(file);
+      }
     });
 
-    const compressedFiles = await Promise.all(compressionPromises);
-    compressedFiles.forEach(file => {
-        console.log(`Compresión finalizada para ${file.name}. Nuevo tamaño: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
-    });
-
-    return compressedFiles;
+    return Promise.all(processingPromises);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsProcessingFiles(true); // Bloquear el botón de envío
+    setIsProcessingFiles(true);
 
     try {
-      // *** CAMBIO EN handleSubmit: Comprimir archivos antes de enviarlos ***
-      const compressedDiagnostico = await compressFiles(form.archivosDiagnostico);
-      const compressedSolucion = await compressFiles(form.archivosSolucion);
-      const compressedPruebas = await compressFiles(form.archivosPruebas);
+      // *** CAMBIO EN handleSubmit: Ahora usa la función `processFiles` ***
+      const processedDiagnostico = await processFiles(form.archivosDiagnostico);
+      const processedSolucion = await processFiles(form.archivosSolucion);
+      const processedPruebas = await processFiles(form.archivosPruebas);
 
       const formData = new FormData();
       // Añadir campos de texto y checkboxes...
@@ -132,10 +133,10 @@ export default function ChecklistApp() {
       formData.append("solucion", form.solucion.join(", "));
       formData.append("pruebas", form.pruebas.join(", "));
 
-      // Añadir los archivos YA COMPRIMIDOS
-      compressedDiagnostico.forEach(file => formData.append("diagnosticoFiles", file));
-      compressedSolucion.forEach(file => formData.append("solucionFiles", file));
-      compressedPruebas.forEach(file => formData.append("pruebasFiles", file));
+      // Añadir los archivos YA PROCESADOS (imágenes comprimidas y videos originales)
+      processedDiagnostico.forEach(file => formData.append("diagnosticoFiles", file));
+      processedSolucion.forEach(file => formData.append("solucionFiles", file));
+      processedPruebas.forEach(file => formData.append("pruebasFiles", file));
 
       const res = await fetch("/api/submit", { method: "POST", body: formData });
       if (!res.ok) {
@@ -148,9 +149,10 @@ export default function ChecklistApp() {
 
     } catch (err) {
       console.error("Error en handleSubmit:", err);
-      alert((err as Error).message);
+      // El error de la librería de compresión ahora será capturado aquí
+      alert(`Ocurrió un error: ${(err as Error).message}`);
     } finally {
-      setIsProcessingFiles(false); // Desbloquear el botón de envío
+      setIsProcessingFiles(false);
     }
   };
 
@@ -176,9 +178,8 @@ export default function ChecklistApp() {
           <hr/>
           <div><Label htmlFor="transcripcionVoz">Transcripción de voz a texto</Label><Textarea id="transcripcionVoz" name="transcripcionVoz" value={form.transcripcionVoz} onChange={handleInputChange} /><div className="flex space-x-2 mt-2"><Button type="button" onClick={handleStartRecording}>Grabar</Button><Button type="button" onClick={handleStopRecording}>Detener</Button></div></div>
           <hr/>
-          {/* El botón ahora muestra un estado de carga */}
           <Button type="submit" className="w-full" disabled={isProcessingFiles}>
-            {isProcessingFiles ? "Procesando imágenes..." : "Enviar"}
+            {isProcessingFiles ? "Procesando archivos..." : "Enviar"}
           </Button>
         </form>
       </CardContent>
