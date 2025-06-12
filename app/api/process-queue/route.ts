@@ -83,8 +83,9 @@ export async function GET() {
   const sheetId = process.env.SPREADSHEET_ID;
   const driveFolder = process.env.DRIVE_FOLDER_ID;
   
-  // *** VERSIÓN FINAL: Volvemos a usar la variable de entorno ***
-  const sheetName = process.env.SHEET_NAME || "Sheet1";
+  // *** SOLUCIÓN DEFINITIVA: Forzamos el nombre de la hoja directamente en el código ***
+  // Esto bypassa el problema de la variable de entorno de Vercel.
+  const sheetName = "bd-atencion-futura";
 
   if (!sheetId || !driveFolder || !sheets || !drive) {
     return NextResponse.json({ error: "Configuración de entorno incompleta." }, { status: 500 });
