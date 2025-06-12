@@ -83,8 +83,6 @@ export async function GET() {
   const sheetId = process.env.SPREADSHEET_ID;
   const driveFolder = process.env.DRIVE_FOLDER_ID;
   
-  // *** SOLUCIÓN DEFINITIVA: Forzamos el nombre de la hoja directamente en el código ***
-  // Esto bypassa el problema de la variable de entorno de Vercel.
   const sheetName = "bd-atencion-futura";
 
   if (!sheetId || !driveFolder || !sheets || !drive) {
@@ -111,8 +109,22 @@ export async function GET() {
         fotosSolucion: solucionLinks,
         fotosPruebas: pruebasLinks,
       };
-      const newRow = [new Date(item.ts).toISOString()];
+      
+      // *** CAMBIO CRÍTICO: Formatear la fecha al formato local de Perú ***
+      const timestamp = new Date(item.ts).toLocaleString('es-PE', {
+        timeZone: 'America/Lima',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).replace(',', ''); // Se elimina la coma que `toLocaleString` a veces añade
+
+      const newRow = [timestamp]; // Columna A
       COLUMN_ORDER.forEach(key => { newRow.push(rowData[key] || ""); });
+      
       rowsToWrite.push(newRow);
       processedCount++;
     } catch (processingError) {
