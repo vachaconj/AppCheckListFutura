@@ -1,7 +1,7 @@
 // components/ui/accordion.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,8 +11,7 @@ interface AccordionSectionProps {
   // Título de la sección (por ejemplo: "Diagnóstico", "Solución", "Pruebas")
   title: string;
 
-  // Array con las opciones de checkbox (por ejemplo:
-  // ["No imprime negro / color faltante", "Cabezal se choca con material", ...])
+  // Array con las opciones de checkbox
   options: string[];
 
   // Nombre del campo que se usará para el <input type="file" name="...">
@@ -24,14 +23,14 @@ interface AccordionSectionProps {
   // Callback que se llamará cuando cambie el array de opciones marcadas
   onOptionsChange: (opts: string[]) => void;
 
-  // Valor del textarea de comentarios (por ejemplo: comentarioDiagnostico)
+  // Valor del textarea de comentarios
   commentsValue: string;
 
   // Callback cuando cambie el contenido del textarea
-  onCommentsChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onCommentsChange: (e: ChangeEvent<HTMLTextAreaElement>) => void;
 
   // Callback cuando cambie el input type="file"
-  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
 }
 
 export function AccordionSection({
@@ -44,10 +43,8 @@ export function AccordionSection({
   onCommentsChange,
   onFileChange,
 }: AccordionSectionProps) {
-  // Estado local para abrir/cerrar el <details>
   const [open, setOpen] = useState(true);
 
-  // Función que se llama al tildar/destildar una opción
   const toggleOption = (option: string) => {
     let newSelected: string[];
     if (selectedOptions.includes(option)) {
@@ -58,14 +55,10 @@ export function AccordionSection({
     onOptionsChange(newSelected);
   };
 
-  // Asegurarnos de sincronizar `open` si el usuario usa la tecla o clic
   useEffect(() => {
-    // No hacemos nada adicional aquí, pero por tema de accesibilidad
-    // podríamos leer `details.open` si fuera necesario. Por ahora mantenemos
-    // solo el estado interno para controlar la visibilidad.
+    // Sincronización para accesibilidad (opcional)
   }, [open]);
 
-  // El name base (“diagnostico”, “solucion” o “pruebas”) se arma en minúsculas:
   const nameBase = title.toLowerCase();
 
   return (
@@ -84,7 +77,7 @@ export function AccordionSection({
           <div key={idx} className="flex items-center space-x-2 mb-1">
             <Checkbox
               id={`${nameBase}-${idx}`}
-              name={nameBase}               // ej: name="diagnostico"
+              name={nameBase}
               value={option}
               checked={selectedOptions.includes(option)}
               onCheckedChange={() => toggleOption(option)}
@@ -100,7 +93,7 @@ export function AccordionSection({
           </Label>
           <Textarea
             id={`comentarios-${nameBase}`}
-            name={`comentarios${title}`}   // ej: name="comentariosDiagnostico"
+            name={`comentarios${title}`}
             placeholder={`Escribe tus comentarios sobre ${title.toLowerCase()}...`}
             value={commentsValue}
             onChange={onCommentsChange}
@@ -115,10 +108,12 @@ export function AccordionSection({
           </Label>
           <Input
             id={`${nameBase}Files`}
-            name={`${fileFieldName}`}      // ej: name="diagnosticoFiles"
+            name={fileFieldName}
             type="file"
             accept="image/*,video/*"
-            multiple
+            // *** ESTA ES LA PIEZA CLAVE ***
+            // El atributo `multiple` permite seleccionar varios archivos a la vez.
+            multiple 
             onChange={onFileChange}
           />
         </div>
