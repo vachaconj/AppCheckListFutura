@@ -158,7 +158,7 @@ export default function ChecklistApp() {
             <div className="flex items-center space-x-4">
                 {/* Reemplaza la URL de `src` con la URL de tu propio logo */}
                 <img 
-                    src="/logo.jpg" //  <-- ¡Importante! La barra al inicio. 
+                    src="/logo.png" //  <-- ¡Importante! La barra al inicio. 
                     alt="Logo de la Empresa" 
                     className="h-12"
                 />
