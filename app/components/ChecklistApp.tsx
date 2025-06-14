@@ -176,7 +176,7 @@ export default function ChecklistApp() {
           <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
             <div className="flex-shrink-0">
               <img 
-                src="/logo.jpg" 
+                src="/logo.png" 
                 alt="Logo de la Empresa" 
                 className="h-12"
               />
