@@ -71,6 +71,28 @@ export default function ChecklistApp() {
     }
   }, []);
 
+  // *** NUEVO: useEffect para registrar el Service Worker y el Manifiesto ***
+  useEffect(() => {
+    // 1. Registrar el Service Worker
+    if ('serviceWorker' in navigator) {
+      // Esperamos a que la página cargue completamente para no retrasar el renderizado inicial
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then(() => console.log('Service Worker registrado con éxito.'))
+          .catch(error => console.error('Error registrando el Service Worker:', error));
+      });
+    }
+
+    // 2. Vincular el Manifiesto (si no existe ya en el HTML)
+    if (!document.querySelector('link[rel="manifest"]')) {
+        const manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = '/manifest.json';
+        document.head.appendChild(manifestLink);
+    }
+  }, []); // El array vacío asegura que esto se ejecute solo una vez cuando el componente se monta
+
   const handleStartRecording = () => { recognitionRef.current?.start(); };
   const handleStopRecording = () => { recognitionRef.current?.stop(); };
   const handleFileChange = (field: keyof FormState, files: FileList | null) => { setForm((prev) => ({ ...prev, [field]: files })); };
@@ -150,18 +172,13 @@ export default function ChecklistApp() {
   return (
     <div className="bg-slate-50 min-h-screen p-4 sm:p-6 lg:p-8">
       <Card className="max-w-3xl mx-auto shadow-lg">
-        {/* *** CABECERA RESPONSIVE MEJORADA *** */}
         <CardHeader className="bg-slate-800 text-white p-4 sm:p-6 rounded-t-lg">
-          {/* - Por defecto (móvil): `flex-col` (apilado vertical) y centrado.
-            - En pantallas pequeñas (`sm`) y más grandes: `sm:flex-row` (en fila) y alineado a la izquierda.
-          */}
           <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
             <div className="flex-shrink-0">
-              {/* Asegúrate de que tu logo 'logo.jpg' esté en la carpeta /public */}
               <img 
-                src="/logo.png" 
+                src="/logo.jpg" 
                 alt="Logo de la Empresa" 
-                className="h-12" // Puedes ajustar la altura de tu logo
+                className="h-12"
               />
             </div>
             <div className="text-center sm:text-left">
@@ -174,7 +191,6 @@ export default function ChecklistApp() {
 
         <CardContent className="p-6 md:p-8 space-y-8">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* El resto del formulario no ha cambiado */}
             <div><Label htmlFor="cliente" className="font-semibold text-slate-700">Cliente</Label><Input id="cliente" name="cliente" value={form.cliente} onChange={handleInputChange} required /></div>
             <div><Label htmlFor="direccion" className="font-semibold text-slate-700">Dirección</Label><Input id="direccion" name="direccion" value={form.direccion} onChange={handleInputChange} required /></div>
             <div><Label htmlFor="ciudad" className="font-semibold text-slate-700">Ciudad</Label><Input id="ciudad" name="ciudad" value={form.ciudad} onChange={handleInputChange} required /></div>

@@ -1,0 +1,21 @@
+{
+  "name": "Futura Checklist Técnico",
+  "short_name": "Futura Checklist",
+  "description": "Checklist para visitas técnicas de Futura.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0F172A",
+  "icons": [
+    {
+      "src": "/logo_256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo_512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
